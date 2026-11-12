@@ -16,6 +16,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { NOTE_DIR, loadMembers, findMember, loadDb, openMissions, doneMissions, formatMissions, loadPremise, readEnv, chatIdFor, telegramApi } from './lib.mjs';
+import { loadGames, latestGame, formatGame } from './game.mjs';
 
 export { loadMembers, findMember } from './lib.mjs';
 
@@ -28,7 +29,7 @@ export function buildMessage(member, db = loadDb()) {
 }
 
 // 체크인 화면 전체: 대전제 → 미션 순서.
-export function checkinText(member, db = loadDb(), premise = loadPremise(), auto = loadAuto()) {
+export function checkinText(member, db = loadDb(), premise = loadPremise(), auto = loadAuto(), games = loadGames(member.id)) {
   const open = openMissions(db, member.id);
   const lines = [
     '━━━━━━━━ ① 대전제 (모든 플레이어·관리자·AI 가 먼저 따르는 규칙) ━━━━━━━━',
@@ -49,6 +50,8 @@ export function checkinText(member, db = loadDb(), premise = loadPremise(), auto
     else lines.push('남은 투두가 없습니다.');
   }
   lines.push('', `작업을 기록하려면: node mimic-note/work.mjs ${member.id} <라벨링|압축|업로드> <대상> <시작|완료>  (그 뒤 git commit·push)`);
+  const game = latestGame(games);
+  lines.push('', '━━━━━━━━ ④ 마지막 [사고력 게임] ━━━━━━━━', '', formatGame(member, game));
   return lines.join('\n');
 }
 

@@ -21,6 +21,27 @@
       "status": "done",
       "note": "uploads/2026-11-13-대화-1.md",
       "updatedAt": "2026-11-12T23:12:52.674Z"
+    },
+    {
+      "stage": "labeling",
+      "target": "대화-2026-11-13-2",
+      "status": "done",
+      "note": "",
+      "updatedAt": "2026-11-12T23:22:29.159Z"
+    },
+    {
+      "stage": "compression",
+      "target": "대화-2026-11-13-2",
+      "status": "done",
+      "note": "",
+      "updatedAt": "2026-11-12T23:22:29.181Z"
+    },
+    {
+      "stage": "upload",
+      "target": "대화-2026-11-13-2",
+      "status": "done",
+      "note": "",
+      "updatedAt": "2026-11-12T23:22:29.201Z"
     }
   ]
 }

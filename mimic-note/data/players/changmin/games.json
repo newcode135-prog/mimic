@@ -1,0 +1,21 @@
+{
+  "player": "changmin",
+  "games": [
+    {
+      "id": "G-001",
+      "at": "2026-11-12T23:21:47.448Z",
+      "host": "claude",
+      "title": "[업로드]와 [자동 다운로드]의 상위 [ ]",
+      "question": "[업로드]는 내가 내 칸에 올리는 것, [자동 다운로드]는 타이머가 모두의 칸에서 받아 오는 것. 그런데 [자동 다운로드]도 결과를 올리고(data/auto 에 push), [업로드]도 결국 남이 받아 가라고 하는 일이다. 방향만 반대인 이 둘을 하나로 묶는 상위 [ ]는 무엇인가? [단어 [단어]] 처럼 겹친 형태로 답할 것.",
+      "rule": "더 넓게(더 많은 것을 정확히) 묶은 쪽이 이긴다. 판정은 창민(대표관리자).",
+      "hostAnswerSeal": "sha256:f7efdf5c8f046c76aeba2255303275a18c40da94725f00a3a3024b2fca54e098",
+      "playerAnswer": null,
+      "playerAnsweredAt": null,
+      "hostAnswer": null,
+      "revealedAt": null,
+      "result": null,
+      "resultNote": "",
+      "status": "waiting-player"
+    }
+  ]
+}
