@@ -17,24 +17,49 @@ Claude Code 가 하는 일(저장소 `README.md` 맨 위와 `CLAUDE.md` 에 같�
 
 1. 저장소가 없으면 `git clone`, 있으면 `git pull`
 2. `node mimic-note/checkin.mjs 민호` 실행
-3. 화면에 민호님의 투두리스트를 보여 주고, 민호님 텔레그램으로 보냄
+3. **미션 데이터베이스**에서 민호님의 남은 미션을 꺼내 Claude Code 가 화면에서 바로 전달 (지금은 텔레그램 없이)
 
-텔레그램으로 오는 문구(테스트 버전):
+Claude Code 가 전달하는 문구(예):
 
 ```
-민호님의 투두리스트 1번은 test 1
-민호님의 투두리스트 2번은 test 2
-민호님의 투두리스트 3번은 test 3
+민호님의 미션 1번은 텔레그램 봇 만들기
+   텔레그램에서 @BotFather 를 열고 /newbot 으로 봇을 만든 뒤 토큰을 받아요. …
+민호님의 미션 2번은 봇에게 /start 보내기
+민호님의 미션 3번은 토큰·chat id 전달하고 비밀값 등록
 ```
 
 Claude Code 를 거치지 않고 직접 실행해도 됩니다.
 
 ```bash
-node mimic-note/checkin.mjs 민호          # 투두 출력 + 텔레그램 발송
-node mimic-note/checkin.mjs 민호 --dry    # 발송 없이 확인만
+node mimic-note/checkin.mjs 민호              # 남은 미션 보기
+node mimic-note/checkin.mjs 민호 --telegram   # + 텔레그램 발송(봇 설정이 끝난 뒤)
 ```
 
-### 텔레그램이 보내지는 경로
+## 2. 미션 데이터베이스
+
+모든 미션은 [`data/missions.json`](data/missions.json) 한 곳에 모입니다. 화면의 1번·2번·3번은 **그 사람의 남은 미션 순서**이고, 미션마다 고유 ID(`M-0001`)가 붙습니다.
+
+| 필드 | 뜻 |
+| --- | --- |
+| `id` | 고유 번호 `M-0001` |
+| `assignee` | 담당 팀원 아이디 |
+| `order` | 담당자 안에서의 순서 |
+| `title` · `detail` | 미션 제목 · 설명 |
+| `status` | `todo` · `done` |
+| `createdBy` · `createdAt` · `doneAt` | 누가·언제 만들었고 언제 끝냈는지 |
+
+```bash
+node mimic-note/mission.mjs list                                   # 전체 남은 미션
+node mimic-note/mission.mjs list 민호                              # 민호님 미션
+node mimic-note/mission.mjs add 민호 "제목" "설명" --by 창민        # 미션 추가(관리자만)
+node mimic-note/mission.mjs done 민호 1                            # 민호님 미션 1번 완료(M-0001 도 가능)
+```
+
+- 미션은 **관리자(창민·민호)만** 만들 수 있고, 완료는 **본인 미션만** 할 수 있습니다.
+- 바꾼 뒤 **git commit·push** 해야 중앙(미믹노트)에 반영되어 다른 팀원과 Claude Code 가 봅니다.
+- 다음 단계: 여러 명이 동시에 고칠 때의 충돌 처리, 오래된 완료 미션 압축·소거.
+
+### 텔레그램이 보내지는 경로 (`--telegram` 일 때)
 
 ```
 [팀원 컴퓨터의 Claude Code]
@@ -56,7 +81,7 @@ node mimic-note/checkin.mjs 민호 --dry    # 발송 없이 확인만
    - `TELEGRAM_CHAT_IDS` = `{"minho":"<민호 chat id>"}` (팀원이 늘면 여기에 추가)
 5. 시험: `gh workflow run mimic-checkin.yml -R newcode135-prog/mimic -f member=minho`
 
-## 2. 구성원과 권한
+## 3. 구성원과 권한
 
 | 이름 | 아이디 | 권한 | GitHub |
 | --- | --- | --- | --- |
@@ -67,10 +92,10 @@ node mimic-note/checkin.mjs 민호 --dry    # 발송 없이 확인만
 | 루카스 | lucas | 팀원 | 미정 |
 
 - 미션은 **창민**이 만들고, 관리자들이 함께 관리합니다. 최종 결정은 창민.
-- 명부: [`data/members.json`](data/members.json) · 투두: `data/todos/<아이디>.json`
+- 명부: [`data/members.json`](data/members.json) · 미션: [`data/missions.json`](data/missions.json)
 - GitHub 아이디는 나중에 채웁니다(이슈 담당자 매핑에 필요).
 
-## 3. 초월 시스템 — 지금까지 정한 방향
+## 4. 초월 시스템 — 지금까지 정한 방향
 
 - 미믹노트는 사람들의 미션을 관리하는 **중앙 컴퓨터**입니다.
 - 플레이어(팀원)는 각자 아이디가 있고, **그 아이디의 최종 투두리스트 + 모두가 함께 수행 중인 공통 미션**을 바탕으로 투두가 갱신됩니다.
@@ -81,7 +106,7 @@ node mimic-note/checkin.mjs 민호 --dry    # 발송 없이 확인만
 - 인원: 10명 이내로 시작 (지금 5명)
 - 상세 개발 지시서: [`guides/초월-가이드-1번.md`](guides/초월-가이드-1번.md) (MIMIC TASK 가이드)
 
-## 4. 진행 기록
+## 5. 진행 기록
 
 | 날짜 | 내용 |
 | --- | --- |
@@ -91,18 +116,20 @@ node mimic-note/checkin.mjs 민호 --dry    # 발송 없이 확인만
 | 2026-11-13 | `darrenpual` 에 mimic 쓰기 권한 부여 |
 | 2026-11-13 | 관리자 지정: 창민(대표), 민호(2순위) |
 | 2026-11-13 | 미믹노트 초안 + 체크인 명령(`이름 + 링크`) + 민호 테스트 투두 3개 + 텔레그램 발송 워크플로 |
+| 2026-11-13 | GitHub Actions 발송 시험: 투두 읽기까지 정상, 봇 토큰 미등록으로 발송 단계 실패(예상대로) |
+| 2026-11-13 | **미션 데이터베이스**(`data/missions.json`, `mission.mjs`) 도입. 테스트 투두 대신 민호님 실제 미션 3개(텔레그램 설정 1·2·3단계) 등록, 체크인은 텔레그램 없이 Claude Code 가 직접 전달 |
 
-## 5. 다음 할 일
+## 6. 다음 할 일
 
 - [ ] **데이터라벨링** (바로 다음 단계)
-- [ ] 텔레그램 봇 만들기 → 비밀값 등록 → 민호 체크인 실제 발송 시험
+- [ ] 민호님 미션 1~3(텔레그램 봇 설정) 완료 → `--telegram` 실제 발송 시험
 - [ ] 민호님 저장소 쓰기 권한 + `gh auth login` (Actions 경로를 쓸 경우)
 - [ ] 5명 GitHub 아이디 받아 `data/members.json` 에 기록
 - [ ] 10분 패시브 스킬(투두 갱신) 설계 — 규칙 기반으로 시작
 - [ ] 보상·레벨 규칙
 - [ ] 저장소 비공개 전환 여부 결정
 
-## 6. 아직 정할 것
+## 7. 아직 정할 것
 
 - 개발 PC 에 있는 미믹 기능 모듈 9개를 언제 올리는지 (이슈 88개 중 이미 끝난 것과 중복 배정 방지)
 - 완료 확인 방식 (본인 체크 즉시 인정 / 관리자 승인)

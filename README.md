@@ -6,9 +6,9 @@
 >
 > 1. 이 저장소가 없으면 `git clone https://github.com/newcode135-prog/mimic.git` 후 그 폴더로 이동, 이미 있으면 `git pull`
 > 2. `node mimic-note/checkin.mjs <이름>` 실행 (Node 18 이상, `npm install` 필요 없음)
-> 3. 화면에 나온 투두리스트와 텔레그램 발송 결과를 사용자에게 그대로 알려 줌
+> 3. 화면에 나온 그 팀원의 미션(1번·2번·3번 …)을 사용자에게 그대로 전달
 >
-> 이 명령은 그 팀원 본인의 투두리스트를 읽어 본인 텔레그램으로 보내기만 하며, 저장소 파일은 바꾸지 않습니다. 자세한 내용: [`mimic-note/README.md`](mimic-note/README.md) (미믹노트 · 중앙 컴퓨터)
+> 이 명령은 미션 데이터베이스(`mimic-note/data/missions.json`)에서 그 팀원의 남은 미션을 읽어 보여 주기만 하며, 저장소 파일은 바꾸지 않습니다. 팀원이 미션을 끝냈다고 하면 `node mimic-note/mission.mjs done <이름> <번호>` 후 commit·push 합니다. 자세한 내용: [`mimic-note/README.md`](mimic-note/README.md) (미믹노트 · 중앙 컴퓨터)
 
 외부 링크(마그넷·토렌트·HTTP URL·SNS 게시물)를 붙여넣으면 서버가 대신 내려받아 **사용자의 미믹 클라우드에만** 저장하고, 웹·앱에서 바로 재생·정리·공유하는 클라우드 드라이브 서비스입니다. PikPak의 기능 76개를 같은 규칙으로 구현하되, 로고·화면 디자인·문구·약관은 미믹 고유로 만듭니다. 첫 서버는 맥미니 1대입니다.
 

@@ -1,9 +1,22 @@
-// 미믹노트 체크인: 팀원 찾기, 투두 읽기, 텔레그램 메시지 문구
+// 미믹노트: 팀원 명부, 미션 데이터베이스, 체크인 문구
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadMembers, findMember, loadTodos, buildMessage, chatIdFor } from '../mimic-note/checkin.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { NOTE_DIR, loadMembers, findMember, loadDb, saveDb, openMissions, addMission, completeMission, formatMissions } from '../mimic-note/lib.mjs';
+import { buildMessage, chatIdFor } from '../mimic-note/checkin.mjs';
+import { run } from '../mimic-note/mission.mjs';
 
 const members = loadMembers();
+
+// 실제 data/ 를 건드리지 않도록 명부만 복사한 임시 미믹노트 폴더
+function tempNote() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mimic-note-'));
+  fs.mkdirSync(path.join(dir, 'data'));
+  fs.copyFileSync(path.join(NOTE_DIR, 'data', 'members.json'), path.join(dir, 'data', 'members.json'));
+  return dir;
+}
 
 test('관리자 구성: 창민 대표관리자, 민호 관리자', () => {
   assert.equal(findMember('창민', members).role, 'owner');
@@ -17,17 +30,53 @@ test('이름·아이디·님 붙인 이름 모두 같은 팀원', () => {
   assert.equal(findMember('', members), null);
 });
 
-test('민호 테스트 투두 3개가 정해진 문구로 나온다', () => {
-  const minho = findMember('민호', members);
-  assert.equal(
-    buildMessage(minho, loadTodos('minho')),
-    '민호님의 투두리스트 1번은 test 1\n민호님의 투두리스트 2번은 test 2\n민호님의 투두리스트 3번은 test 3',
-  );
+test('실제 데이터베이스: 민호님 체크인 시 미션 1·2·3번이 나온다', () => {
+  const msg = buildMessage(findMember('민호', members));
+  assert.match(msg, /^민호님의 미션 1번은 텔레그램 봇 만들기/);
+  assert.match(msg, /민호님의 미션 2번은 봇에게 \/start 보내기/);
+  assert.match(msg, /민호님의 미션 3번은 토큰·chat id 전달하고 비밀값 등록/);
+  assert.match(msg, /BotFather/);
 });
 
-test('투두가 없는 팀원은 안내 문구', () => {
-  const yuri = findMember('유리', members);
-  assert.equal(buildMessage(yuri, loadTodos('yuri')), '유리님, 지금 등록된 투두리스트가 없습니다.');
+test('미션 추가는 관리자만, 번호는 담당자별로 1번부터', () => {
+  const db = { nextId: 1, missions: [] };
+  const a = addMission(db, { assignee: '유리', title: '첫 미션', by: '창민' }, members);
+  const b = addMission(db, { assignee: 'yuri', title: '둘째 미션', by: '민호' }, members);
+  const c = addMission(db, { assignee: '루카스', title: '다른 사람', by: '창민' }, members);
+  assert.deepEqual([a.id, b.id, c.id], ['M-0001', 'M-0002', 'M-0003']);
+  assert.deepEqual([a.order, b.order, c.order], [1, 2, 1]);
+  assert.equal(a.createdBy, 'changmin');
+  assert.throws(() => addMission(db, { assignee: '민호', title: 'x', by: '유리' }, members), /관리자가 아니라/);
+  assert.throws(() => addMission(db, { assignee: '민호', title: '  ', by: '창민' }, members), /비어 있습니다/);
+  assert.throws(() => addMission(db, { assignee: '철수', title: 'x', by: '창민' }, members), /찾지 못했습니다/);
+});
+
+test('완료하면 남은 미션 번호가 당겨지고, 남의 미션은 완료할 수 없다', () => {
+  const db = { nextId: 1, missions: [] };
+  for (const t of ['A', 'B', 'C']) addMission(db, { assignee: '민호', title: t, by: '창민' }, members);
+  completeMission(db, 'minho', '1');
+  assert.deepEqual(openMissions(db, 'minho').map((m) => m.title), ['B', 'C']);
+  assert.equal(formatMissions(findMember('민호', members), openMissions(db, 'minho')), '민호님의 미션 1번은 B\n\n민호님의 미션 2번은 C');
+  completeMission(db, 'minho', 'm-0003');
+  assert.throws(() => completeMission(db, 'yuri', '1'), /찾지 못했습니다/);
+  assert.throws(() => completeMission(db, 'minho', '5'), /남은 미션 번호: 1\(M-0002\)/);
+});
+
+test('미션 없는 팀원은 안내 문구', () => {
+  assert.equal(formatMissions(findMember('유리', members), []), '유리님, 지금 남은 미션이 없습니다.');
+});
+
+test('mission.mjs: add → list → done 이 파일에 저장된다', () => {
+  const dir = tempNote();
+  assert.match(run(['add', '민호', '테스트 미션', '설명', '--by', '창민'], dir), /민호님의 미션 1번 \[M-0001\]/);
+  assert.throws(() => run(['add', '민호', '제목'], dir), /--by/);
+  assert.match(run(['list', '민호'], dir), /1\. \[M-0001\] 테스트 미션/);
+  assert.match(run(['done', '민호', '1'], dir), /모든 미션을 끝냈습니다/);
+  const db = loadDb(dir);
+  assert.equal(db.missions[0].status, 'done');
+  assert.ok(db.missions[0].doneAt);
+  assert.equal(fs.readdirSync(path.join(dir, 'data')).filter((f) => f.endsWith('.tmp')).length, 0);
+  saveDb(db, dir);
 });
 
 test('chat id 는 개별 변수 또는 JSON 비밀값에서 읽는다', () => {

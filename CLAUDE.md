@@ -8,7 +8,12 @@
 node mimic-note/checkin.mjs <이름>
 ```
 
-출력된 투두리스트와 텔레그램 발송 결과를 그대로 전한다. 팀원 명부·투두·진행 기록은 `mimic-note/README.md`(미믹노트, 중앙 컴퓨터). 토큰·chat id 는 파일에 쓰지 않는다(공개 저장소).
+출력된 미션(1번·2번·3번 …)을 그대로 전한다(지금은 텔레그램 없이 Claude Code 가 직접 전달).
+
+- 미션 데이터베이스: `mimic-note/data/missions.json` — 직접 고치지 말고 `node mimic-note/mission.mjs list|add|done` 을 쓴다.
+- 팀원이 미션을 끝냈다고 하면 `node mimic-note/mission.mjs done <이름> <번호>` → 바뀐 `missions.json` 을 commit·push(권한이 없으면 사용자에게 알린다).
+- 미션 추가는 관리자(창민·민호)만: `node mimic-note/mission.mjs add <이름> "제목" "설명" --by <관리자>`
+- 팀원 명부·진행 기록은 `mimic-note/README.md`(미믹노트, 중앙 컴퓨터). 토큰·chat id 는 파일에 쓰지 않는다(공개 저장소).
 
 ## 1. 작업 전에 예상 시간부터 보여 준다 (항상)
 

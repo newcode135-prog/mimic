@@ -25,4 +25,4 @@ jobs:
           MEMBER: ${{ inputs.member }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
-        run: node mimic-note/checkin.mjs "$MEMBER" --no-dispatch
+        run: node mimic-note/checkin.mjs "$MEMBER" --telegram --no-dispatch
