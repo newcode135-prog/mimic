@@ -8,8 +8,9 @@
 | --- | --- |
 | 기획 | 완료 — [`docs/MIMIC_PLAN.md`](docs/MIMIC_PLAN.md) |
 | 기능 명세·라벨 데이터 | 완료 — [`docs/features.json`](docs/features.json) (기능 76 · 결정 9 · 작업 3) |
-| 개발 | 시작 단계 — 공통 뼈대 일부만 작성(`server/core/config.js`, `db.js`, `schema.sql`) |
-| 서버 실행 | 아직 불가 — 서버 진입점(`server/index.js`)이 없음 |
+| 이 저장소에 있는 코드 | 공통 뼈대(서버 코어·화면 틀·디자인), 예상 시간 계산기, 관리자 계정 만들기 |
+| 기능 모듈 9개 + 플랫폼 | 개발 PC 에서 구현 완료, 2차 검수·수정 중 — 검수를 통과하면 이 저장소에 올림 |
+| 지금 받아서 실행하면 | 서버는 뜨지만 기능 모듈이 아직 없어 화면 대부분이 "준비 중"으로 나옴(정상) |
 
 ## 처음 오신 분 (사람·AI 공통)
 
@@ -44,8 +45,9 @@ Node.js 24 · Express 5 · SQLite(Node 내장 `node:sqlite`) · WebTorrent · ff
 ```bash
 # Node.js 24 이상, ffmpeg 필요
 npm install
-npm test        # node:test (테스트가 추가되는 대로 실행)
-npm start       # server/index.js 작성 후 사용 가능, 기본 포트 4300
+npm test                              # 전체 테스트
+npm run seed -- <관리자 이메일>         # 첫 관리자 계정(없으면 만들고 임시 비밀번호를 한 번 보여 줌)
+npm start                             # http://localhost:4300
 ```
 
 실행 데이터(DB·파일 본문)는 환경변수 `MIMIC_DATA` 경로에 저장됩니다(기본 `~/.mimic`). 비밀값은 `.env`에만 두고 저장소에 올리지 않습니다.
