@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "미믹 클라우드 저장",
+  "short_name": "미믹",
+  "version": "0.1.0",
+  "description": "웹페이지의 마그넷·토렌트·영상·파일 링크를 찾아 미믹 클라우드에 바로 저장하고, 매일 출석 체크로 프리미엄을 받으세요.",
+  "minimum_chrome_version": "110",
+  "permissions": ["contextMenus", "storage", "activeTab", "scripting"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "미믹 클라우드 저장", "default_popup": "popup.html" },
+  "options_ui": { "page": "options.html", "open_in_tab": true }
+}

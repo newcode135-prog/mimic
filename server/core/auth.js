@@ -100,7 +100,8 @@ export function loadUser(db) {
       }
     } else if (token?.startsWith('mp_')) {
       const p = db.prepare('SELECT * FROM personal_tokens WHERE token_hash=? AND revoked_at IS NULL').get(sha256(token));
-      if (p && (!p.expires_at || p.expires_at > now())) {
+      // WebDAV 전용 비밀번호는 /webdav 에서만 쓴다(일반 API 토큰으로 인정하지 않음)
+      if (p && p.app_id !== 'webdav' && (!p.expires_at || p.expires_at > now())) {
         const u = userById.get(p.user_id);
         if (u && !BLOCKED.has(u.status)) {
           req.user = u;
@@ -123,9 +124,11 @@ export function requireUser(req, _res, next) {
   if (u.status === 'locked') fail(403, 'account_locked', '계정이 잠겼습니다');
   next();
 }
+// 관리자 API 는 웹 세션으로만 쓸 수 있다(관리자 소유의 개인·연결 앱 토큰으로는 불가)
 export function requireAdmin(req, res, next) {
   requireUser(req, res, () => {
     if (!req.user.is_admin) fail(403, 'admin_only', '관리자만 접근할 수 있습니다');
+    if (req.authKind !== 'session') fail(403, 'session_required', '관리자 기능은 웹에서 로그인해 사용하세요');
     next();
   });
 }
@@ -148,7 +151,8 @@ export const requireScope = (scope) => (req, res, next) =>
     next();
   });
 
-// 쿼터 출처: 토큰으로 들어온 요청은 연결 앱(F-05)
+// 쿼터 출처: 토큰으로 들어온 요청은 모두 연결 앱(F-05). appId 'extension' 은 기기 인가에서 누구나 댈 수 있어 공식으로 세지 않는다
+// (확장의 공식 대우는 출석 체크(I-06)에만 남는다, billing 모듈)
 export const quotaSource = (req) => (req.authKind === 'token' ? 'app' : 'official');
 
 export function publicUser(u) {

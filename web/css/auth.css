@@ -1,0 +1,92 @@
+/* auth 모듈 전용: 로그인·승인·계정 및 보안·피드백 */
+.auth-card { width: 100%; max-width: 380px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.auth-card h2 { font-size: 24px; margin: 0; letter-spacing: -.02em; }
+.auth-card > p { margin: 0; }
+.auth-card > .badge { align-self: flex-start; }
+.auth-form { display: flex; flex-direction: column; }
+.auth-form .field { margin-bottom: 12px; }
+.auth-form > .btn.primary { margin-top: 4px; }
+.auth-back { align-self: flex-start; margin-left: -10px; color: var(--ink-2); }
+
+.auth-social { gap: 10px; }
+.auth-social-btn { justify-content: center; font-weight: 700; }
+.auth-social-btn .badge { margin-left: 4px; }
+
+.auth-divider { display: flex; align-items: center; gap: 12px; color: var(--ink-3); font-size: 12px; }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+
+.auth-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.auth-method { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 6px 0; border: 0; background: none; font: inherit; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.auth-method-icon { width: 56px; height: 56px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); display: flex; align-items: center; justify-content: center; color: var(--brand-strong); transition: background .15s, border-color .15s, transform .1s; }
+.auth-method:hover .auth-method-icon { background: var(--brand-soft); border-color: var(--brand); }
+.auth-method:active .auth-method-icon { transform: scale(.96); }
+.auth-method .icon { width: 24px; height: 24px; }
+
+.auth-consent { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); line-height: 1.6; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--bg); }
+.auth-consent .check { align-items: flex-start; }
+.auth-consent input { margin-top: 3px; accent-color: var(--brand); }
+.auth-consent-note { color: var(--ink-3, var(--ink-2)); }
+.auth-consent-all { padding-bottom: 6px; margin-bottom: 2px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.auth-req { color: var(--brand-strong); }
+.auth-consent.flash { animation: auth-flash .9s ease 2; }
+@keyframes auth-flash { 50% { background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent); } }
+
+.auth-dev-hint { font-size: 12px; color: var(--ink-2); padding: 10px 12px; border: 1px dashed var(--accent); border-radius: var(--radius-sm); background: var(--accent-soft); margin: 0; }
+
+.auth-phone { display: grid; grid-template-columns: 156px 1fr; gap: 8px; }
+.auth-code-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.auth-code-btn { min-width: 116px; height: 40px; border-radius: var(--radius-sm); }
+.auth-emph { color: var(--brand-strong); font-weight: 600; }
+.auth-links { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.auth-link { border: 0; background: none; padding: 0; font: inherit; color: var(--brand-strong); cursor: pointer; }
+.auth-link:hover { text-decoration: underline; }
+
+.auth-qr { position: relative; align-self: center; width: 232px; height: 232px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; display: flex; align-items: center; justify-content: center; }
+.auth-qr img { width: 100%; height: 100%; image-rendering: pixelated; }
+.auth-qr-cover { position: absolute; inset: 0; border-radius: inherit; background: rgba(255, 255, 255, .94); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 16px; font-weight: 600; }
+.auth-qr-timer { text-align: center; font-size: 12px; color: var(--ink-3); }
+
+.auth-approve-icon { width: 56px; height: 56px; border-radius: 16px; background: var(--brand-soft); color: var(--brand-strong); display: flex; align-items: center; justify-content: center; }
+.auth-kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--bg); font-size: 13px; }
+.auth-kv dt { color: var(--ink-3); }
+.auth-kv dd { margin: 0; word-break: break-all; }
+.auth-scopes { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.8; }
+.auth-warn { margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--danger-soft); color: #a83434; font-size: 12px; }
+.auth-actions { justify-content: flex-end; }
+.auth-actions .btn { flex: 1; }
+.auth-result { text-align: center; align-items: center; }
+.auth-usercode { font-family: ui-monospace, 'SF Mono', Consolas, monospace; font-size: 20px; letter-spacing: .12em; text-align: center; text-transform: uppercase; }
+
+/* 개발용 소셜 로그인 화면(서버가 그림) */
+.auth-dev { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: linear-gradient(160deg, var(--accent-soft), var(--bg)); }
+.auth-dev-card { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 12px; }
+.auth-dev-card .badge { align-self: flex-start; }
+
+/* 계정 및 보안 */
+[data-page='account'] .tabs { overflow-y: hidden; } /* 탭 밑줄(-1px)이 세로 스크롤바를 만들지 않게 */
+.account-body { max-width: 760px; }
+.account-card h3 { margin-bottom: 14px; }
+.account-profile { gap: 18px; margin-bottom: 18px; align-items: center; }
+.account-profile .col { align-items: flex-start; gap: 6px; }
+.account-avatar { width: 76px; height: 76px; flex: none; border-radius: 50%; background: var(--brand); color: #fff; font-size: 28px; font-weight: 800; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.account-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.account-facts { display: grid; grid-template-columns: 120px 1fr; gap: 8px 12px; margin: 18px 0 0; padding-top: 16px; border-top: 1px solid var(--line-2); font-size: 13px; }
+.account-facts dt { color: var(--ink-3); }
+.account-facts dd { margin: 0; }
+.account-form { max-width: 420px; }
+.account-current { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--bg); }
+.account-social { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--line-2); }
+.account-social:last-child { border-bottom: 0; }
+.account-social b { min-width: 90px; }
+.account-danger { border-color: #f2c9c9; }
+.account-danger ul { margin: 0 0 18px; padding-left: 18px; line-height: 1.9; color: var(--ink-2); }
+.account-table-wrap { overflow-x: auto; }
+
+/* 피드백 창 */
+.feedback-form .field { margin-bottom: 12px; }
+.feedback-form .hint { text-align: right; }
+
+@media (max-width: 860px) {
+  .auth-phone { grid-template-columns: 140px 1fr; }
+  .account-facts { grid-template-columns: 96px 1fr; }
+}

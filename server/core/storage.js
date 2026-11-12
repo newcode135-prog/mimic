@@ -70,18 +70,32 @@ function meterStream(bps, count) {
   });
 }
 
+// 브라우저 안에서 바로 열어도 안전한 형식만 inline 으로 보낸다. HTML·SVG·스크립트 등은 항상 첨부로(미믹 도메인에서 실행 방지)
+const SAFE_INLINE = /^(video|audio)\/|^image\/(?!svg)|^application\/pdf$|^text\/(plain|vtt)$/;
+
 // Range(이어받기) 지원 전송. throttleBps 로 속도 제한, onBytes(실제 전송량)로 쿼터를 차감한다
 export function sendBlob(req, res, cfg, hash, { name, mime, inline = true, throttleBps = 0, onBytes } = {}) {
+  mime = String(mime || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+  if (inline && !SAFE_INLINE.test(mime)) inline = false;
+  res.set('X-Content-Type-Options', 'nosniff');
   const file = blobPath(cfg, hash);
   if (!fs.existsSync(file)) {
     res.status(404).json({ error: 'not_found', message: '파일 본문이 없습니다' });
     return;
   }
-  const total = fs.statSync(file).size;
+  const st = fs.statSync(file);
+  const total = st.size;
+  // 본문은 내용 해시로 저장돼 바뀌지 않으므로 해시가 곧 강한 ETag. 브라우저가 실패한 다운로드를 이어받으려면 검증값이 필요하다(B-07)
+  const etag = `"${hash}"`;
+  const lastModified = st.mtime.toUTCString();
+  res.set({ ETag: etag, 'Last-Modified': lastModified });
+  // If-Range 가 지금 검증값과 다르면 Range 를 무시하고 전체(200)를 보낸다
+  const ifRange = req.headers['if-range'];
+  const rangeOk = !ifRange || ifRange === etag || ifRange === lastModified;
   let start = 0;
   let end = total - 1;
   let status = 200;
-  const m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
+  const m = rangeOk && /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
   if (m && total > 0) {
     if (m[1] === '') start = Math.max(0, total - Number(m[2] || 0));
     else {

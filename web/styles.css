@@ -87,7 +87,7 @@ textarea.input { height: auto; min-height: 96px; padding: 10px 12px; resize: ver
 .badge.brand { background: var(--brand-soft); color: var(--brand-strong); }
 .badge.accent { background: var(--accent-soft); color: #c4561a; }
 .badge.danger { background: var(--danger-soft); color: var(--danger); }
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 20px; overflow-x: auto; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 20px; overflow-x: auto; overflow-y: hidden; }
 .tabs a, .tabs button { padding: 10px 14px; border: 0; background: none; font: inherit; color: var(--ink-2); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
 .tabs .active { color: var(--brand-strong); border-color: var(--brand); font-weight: 700; }
 .tabs a:hover { text-decoration: none; color: var(--ink); }
@@ -193,10 +193,14 @@ textarea.input { height: auto; min-height: 96px; padding: 10px 12px; resize: ver
 /* 관리자 레이아웃 */
 .admin-shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
 .admin-shell .sidebar { grid-row: auto; }
-.admin-main { padding: 28px 32px; overflow: auto; }
+.admin-content { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
+.admin-main { flex: 1; padding: 28px 32px; overflow: auto; }
+.admin-mobile-bar { align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
 
 @media (max-width: 860px) {
-  .drive-shell { grid-template-columns: 1fr; }
+  .drive-shell { grid-template-columns: minmax(0, 1fr); }
+  .hide-narrow { display: none; }
+  .search { min-width: 0; }
   .sidebar { position: fixed; inset: 0 auto 0 0; width: 272px; z-index: 40; transform: translateX(-100%); transition: transform .2s; box-shadow: var(--shadow-lg); }
   .sidebar.open { transform: none; }
   .mobile-only { display: inline-flex; }

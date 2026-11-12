@@ -1,0 +1,54 @@
+/* offline 모듈: 클라우드 다운로드 작업 창 + 오른쪽 아래 전송 패널 */
+
+/* 작업 만들기 창 */
+.ol-quota-row { padding: 10px 12px; margin-bottom: 14px; border-radius: var(--radius-sm); background: var(--brand-soft); color: var(--brand-strong); font-weight: 600; }
+.ol-links { height: auto; min-height: 132px; padding: 10px 12px; resize: vertical; font-family: ui-monospace, Consolas, monospace; font-size: 13px; line-height: 1.6; }
+.ol-chosen { display: flex; flex-wrap: wrap; gap: 6px; }
+.ol-chosen .badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.ol-x { display: inline-flex; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; }
+.ol-x .icon { width: 14px; height: 14px; }
+.ol-where { padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.ol-where-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 떠 있는 버튼 */
+.tr-fab { position: fixed; right: 24px; bottom: 24px; z-index: 30; width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--brand); color: #fff; box-shadow: var(--shadow-lg); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.tr-fab:hover { background: var(--brand-strong); }
+.tr-fab .icon { width: 24px; height: 24px; }
+.tr-badge { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid var(--surface); }
+
+/* 패널 */
+.tr-panel { position: fixed; right: 24px; bottom: 24px; z-index: 30; width: 400px; max-height: min(560px, calc(100vh - 48px)); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg); overflow: hidden; }
+.tr-head { display: flex; align-items: center; gap: 4px; padding: 8px 8px 8px 16px; border-bottom: 1px solid var(--line-2); }
+.tr-collapse .icon { transition: transform .15s; }
+.tr-panel.collapsed .tr-collapse .icon { transform: rotate(180deg); }
+.tr-panel.collapsed .tr-body { display: none; }
+.tr-panel.collapsed .tr-head { border-bottom: 0; }
+.tr-body { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.tr-quota-row { display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--bg); font-size: 13px; color: var(--ink-2); }
+.tr-quota-row .icon { color: var(--brand); }
+.tr-tabs { margin: 0; padding: 0 8px; }
+.tr-tabs button { padding: 10px 10px; font-size: 13px; }
+.tr-count { margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--line-2); font-size: 11px; }
+.tr-tools { display: flex; align-items: center; gap: 6px; padding: 8px 12px; }
+.tr-tools:empty { display: none; }
+.tr-quota-row, .tr-tabs, .tr-tools { flex: none; }
+.tr-list { overflow-y: auto; padding: 0 8px 8px; flex: 1; min-height: 0; }
+.tr-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: var(--radius-sm); }
+.tr-row:hover { background: var(--line-2); }
+.tr-ic { flex: none; width: 36px; height: 36px; border-radius: 10px; background: var(--brand-soft); color: var(--brand-strong); display: flex; align-items: center; justify-content: center; }
+.tr-row.is-error .tr-ic, .tr-row.is-blocked .tr-ic { background: var(--danger-soft); color: var(--danger); }
+.tr-row.is-canceled .tr-ic { background: var(--line-2); color: var(--ink-3); }
+.tr-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.tr-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--ink-3); }
+.tr-row.is-error .tr-meta, .tr-row.is-blocked .tr-meta { color: var(--danger); }
+.tr-acts { display: flex; flex: none; }
+.tr-acts .icon-btn { width: 30px; height: 30px; }
+.tr-acts .icon { width: 16px; height: 16px; }
+.tr-empty { padding: 32px 16px; text-align: center; color: var(--ink-3); font-size: 13px; }
+.tr-src { padding: 8px 10px; margin-bottom: 12px; border-radius: var(--radius-sm); background: var(--bg); word-break: break-all; color: var(--ink-2); }
+
+@media (max-width: 760px) {
+  .tr-fab { right: 16px; bottom: 16px; }
+  .tr-panel { right: 12px; left: 12px; bottom: 12px; width: auto; }
+}

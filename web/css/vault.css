@@ -1,0 +1,50 @@
+/* 금고(vault) 화면 전용 */
+.vault-center { display: flex; justify-content: center; padding: 32px 0; }
+.vault-lock { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 12px; text-align: center; }
+.vault-lock .field, .vault-lock .check { text-align: left; }
+.vault-badge { width: 56px; height: 56px; margin: 0 auto 4px; border-radius: 16px; display: grid; place-items: center; flex: none; background: var(--brand-soft); color: var(--brand-strong); }
+.vault-badge .icon { width: 28px; height: 28px; }
+.vault-badge.sm { width: 44px; height: 44px; margin: 0; border-radius: 12px; }
+.vault-badge.sm .icon { width: 22px; height: 22px; }
+.vault-error { min-height: 18px; margin: 0; font-size: 12px; color: var(--danger); }
+.vault-warn { color: var(--warn); font-weight: 600; }
+.vault-points { text-align: left; margin: 0 0 4px; padding-left: 18px; color: var(--ink-2); display: flex; flex-direction: column; gap: 4px; }
+
+.vault-usage { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.vault-usage .progress { flex: 0 0 180px; }
+.vault-jobs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.vault-jobs:empty { display: none; }
+.vault-job { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.vault-job.error { border-color: #f2c9c9; }
+.vault-job.error .progress > span { background: var(--danger); }
+.vault-job-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vault-selbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin-bottom: 10px; border-radius: var(--radius-sm); background: var(--brand-soft); flex-wrap: wrap; }
+
+.vault-list { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); border-collapse: separate; border-spacing: 0; overflow: hidden; }
+.vault-list tbody tr { cursor: pointer; }
+.vault-list tbody tr:hover td { background: var(--line-2); }
+.vault-list tbody tr:last-child td { border-bottom: 0; }
+.vault-cb { width: 36px; }
+.vault-actions { width: 48px; text-align: right; }
+.vault-name { display: flex; align-items: center; gap: 10px; font-weight: 600; word-break: break-all; }
+.vault-name .icon { color: var(--ink-3); }
+.vault-open.vault-dragover { outline: 2px dashed var(--brand); outline-offset: 6px; border-radius: var(--radius); }
+
+.vault-mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; }
+.vault-section + .vault-section { border-top: 1px solid var(--line-2); margin-top: 16px; padding-top: 16px; }
+.vault-picker { min-height: 120px; }
+.vault-picker-path { flex-wrap: wrap; margin-bottom: 10px; }
+.vault-picker-item { justify-content: flex-start; }
+
+.vault-share .vault-lock { margin: 0 auto; }
+.vault-share .vault-list tbody tr { cursor: default; }
+.vault-foot { margin-top: 12px; }
+
+@media (max-width: 720px) {
+  .vault-hide-sm { display: none; }
+  .vault-usage .progress { flex-basis: 100%; }
+}
+
+.vault-meter { display: flex; align-items: center; gap: 10px; margin-top: -4px; }
+.vault-meter .progress { flex: 1; }
+.vault-meter .small { min-width: 96px; text-align: right; }

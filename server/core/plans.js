@@ -47,15 +47,24 @@ export const BT_MAX_FILES = 7000;
 
 // 가격은 참고값(PikPak 2026-11-12 원화 표시가). 실제 미믹 가격은 미결정(Q-3)
 export const PRODUCTS = [
-  { id: 'sub_month', kind: 'subscription', months: 1, label: '월 구독', price: { global: 9591, regional: 4800 }, firstPrice: { global: 6256, regional: 3100 } },
-  { id: 'sub_year', kind: 'subscription', months: 12, label: '연간 구독', price: { global: 101636, regional: 50800 }, firstPrice: { global: 62417, regional: 31200 } },
-  { id: 'once_month', kind: 'once', months: 1, label: '1개월', price: { global: 10125, regional: 5100 } },
-  { id: 'once_year', kind: 'once', months: 12, label: '1년', price: { global: 69354, regional: 34700 } },
-  { id: 'storage_10tb_year', kind: 'addon_storage', months: 12, bytes: 10 * TB, label: '추가 저장공간 10TB · 1년', price: { global: 59000, regional: 29500 } },
-  { id: 'quota_month', kind: 'addon_quota', months: 1, amounts: { cloud: 10 * TB, down: 1 * TB, up: 256 * GB }, label: '추가 전송 쿼터 · 1개월', price: { global: 9900, regional: 4900 } },
-  { id: 'quota_year', kind: 'addon_quota', months: 12, amounts: { cloud: 10 * TB, down: 1 * TB, up: 256 * GB }, label: '추가 전송 쿼터 · 1년', price: { global: 99000, regional: 49000 } },
+  { id: 'sub_month', kind: 'subscription', months: 1, label: '월 구독', labelEn: 'Monthly plan', price: { global: 9591, regional: 4800 }, firstPrice: { global: 6256, regional: 3100 } },
+  { id: 'sub_year', kind: 'subscription', months: 12, label: '연간 구독', labelEn: 'Annual plan', price: { global: 101636, regional: 50800 }, firstPrice: { global: 62417, regional: 31200 } },
+  { id: 'once_month', kind: 'once', months: 1, label: '1개월', labelEn: '1 month', price: { global: 10125, regional: 5100 } },
+  { id: 'once_year', kind: 'once', months: 12, label: '1년', labelEn: '1 year', price: { global: 69354, regional: 34700 } },
+  { id: 'storage_10tb_year', kind: 'addon_storage', months: 12, bytes: 10 * TB, label: '추가 저장공간 10TB · 1년', labelEn: 'Extra 10TB storage · 1 year', price: { global: 59000, regional: 29500 } },
+  { id: 'quota_month', kind: 'addon_quota', months: 1, amounts: { cloud: 10 * TB, down: 1 * TB, up: 256 * GB }, label: '추가 전송 쿼터 · 1개월', labelEn: 'Extra transfer quota · 1 month', price: { global: 9900, regional: 4900 } },
+  { id: 'quota_year', kind: 'addon_quota', months: 12, amounts: { cloud: 10 * TB, down: 1 * TB, up: 256 * GB }, label: '추가 전송 쿼터 · 1년', labelEn: 'Extra transfer quota · 1 year', price: { global: 99000, regional: 49000 } },
 ];
-export const PAYMENT_METHODS = ['card', 'paypal', 'crypto', 'alipay', 'unionpay'];
+// 암호화폐는 국내 규제 검토 전까지 보류(8-4)라 받지 않는다
+export const PAYMENT_METHODS = ['card', 'paypal', 'alipay', 'unionpay'];
+// 상품이 주는 일수: 1년 = 365일, 그 외 30일 × 개월(초대 보상 예시 "월 구독 4회 → 42일, 연 구독 → 128일"과 맞춤)
+export const productDays = (p) => (p.months === 12 ? 365 : p.months * 30);
+// 출석 체크(I-06). ponytail: PikPak 보상 수치 미확인 → 미믹 자체 값(7일 연속마다 프리미엄 1일)
+export const CHECKIN = { rewardEvery: 7, rewardDays: 1 };
+export const TRIAL_REMIND_DAYS = 3; // 체험 코드 종료 알림
+export const RENEW_REMIND_DAYS = 7; // 정기결제 갱신 사전 안내(국내 규정)
+export const RENEW_RETRIES = 3; // 자동 갱신 결제가 실패하면 하루 간격으로 이만큼 시도한 뒤 자동 갱신을 멈춘다
+export const ORDER_KEEP_DAYS = 5 * 365; // 탈퇴·삭제 회원의 결제 기록 보관 기간(전자상거래법: 대금결제·공급 기록 5년)
 
 export const REFERRAL = { shareRate: 0.35, windowDays: 365, bindHours: 12, uploadBonusEvery: 10, uploadBonus: 100 * GB, uploadBonusMax: 5 * TB };
 export const EXPIRY = { playbackStopDays: 7, overQuotaMonths: 4, warnMonths: 2, deleteWindowDays: [15, 30] };

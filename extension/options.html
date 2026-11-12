@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>미믹 확장 설정</title>
+<style>
+  body { max-width: 560px; margin: 40px auto; padding: 0 16px; font: 14px/1.6 'Pretendard', 'Malgun Gothic', system-ui, sans-serif; color: #1b2430; background: #faf8f4; }
+  .card { background: #fff; border: 1px solid #e7e3dc; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  input { width: 100%; height: 38px; padding: 0 10px; border: 1px solid #e7e3dc; border-radius: 8px; font: inherit; box-sizing: border-box; }
+  button { margin-top: 10px; height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid #0f9d8f; background: #0f9d8f; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button.plain { background: #fff; color: #d64545; border-color: #f2c9c9; }
+  button:disabled { opacity: .5; cursor: default; }
+  .muted { color: #8a93a3; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h2>미믹 클라우드 저장 · 설정</h2>
+  <div class="card">
+    <label for="server"><b>미믹 서버 주소</b></label>
+    <input id="server" placeholder="http://localhost:4300">
+    <p class="muted">직접 운영하는 미믹 서버라면 그 주소를 적어 주세요. 주소를 바꾸면 접속 권한을 한 번 묻고, 연결된 계정은 다시 연결해야 합니다.</p>
+    <button id="save">저장</button>
+    <p id="msg" class="muted"></p>
+  </div>
+  <div class="card">
+    <b>연결된 계정</b>
+    <p id="account" class="muted"></p>
+    <button id="logout" class="plain">연결 해제</button>
+    <p class="muted">서버에 남은 연결은 미믹 웹의 설정 &gt; 액세스 및 통합 &gt; 연결된 앱에서도 끊을 수 있습니다.</p>
+  </div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

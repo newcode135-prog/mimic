@@ -9,7 +9,8 @@ import { newId, now, DAY } from '../server/core/util.js';
 
 export async function startServer(overrides = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mimic-test-'));
-  const inst = await createApp({ dataDir, dev: true, quiet: true, runJobs: false, ...overrides });
+  // 운영 모드(dev:false) 테스트도 띄울 수 있게 기본값이 아닌 32자 이상 비밀값을 준다(B-04 시작 거부 규칙)
+  const inst = await createApp({ dataDir, dev: true, quiet: true, runJobs: false, secret: 'test-secret-0123456789abcdef0123456789', ...overrides });
   const server = inst.app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   inst.ctx.server = server;

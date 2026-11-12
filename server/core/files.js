@@ -130,8 +130,9 @@ export function copyTree(db, srcUserId, srcId, dstUserId, dstParentId, { origin 
   return root;
 }
 
+// copyTree 가 실제로 복사할 양: 휴지통에 따로 넣은 하위 항목은 copyTree 처럼 건너뛴다(B-01)
 export function treeSize(db, userId, id) {
-  const ids = descendantIds(db, userId, id);
-  const q = db.prepare("SELECT COALESCE(SUM(size),0) AS n FROM files WHERE id=? AND kind='file'");
-  return ids.reduce((s, x) => s + Number(q.get(x).n), 0);
+  const sql = `WITH RECURSIVE t(id) AS (SELECT ? UNION ALL SELECT f.id FROM files f JOIN t ON f.parent_id = t.id WHERE f.user_id = ? AND f.trashed_at IS NULL)
+    SELECT COALESCE(SUM(f.size),0) AS n FROM files f JOIN t ON f.id = t.id WHERE f.user_id = ? AND f.kind = 'file'`;
+  return Number(db.prepare(sql).get(id, userId, userId).n);
 }

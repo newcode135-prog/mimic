@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "미믹",
+  "short_name": "미믹",
+  "description": "링크만 붙이면 내 클라우드로 — 미믹 클라우드 드라이브",
+  "lang": "ko",
+  "dir": "ltr",
+  "start_url": "/drive/all",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0f9d8f",
+  "background_color": "#faf8f4",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

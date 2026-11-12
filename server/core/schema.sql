@@ -95,8 +95,20 @@ CREATE TABLE IF NOT EXISTS notifications (
   body TEXT NOT NULL DEFAULT '',
   link TEXT,
   read_at INTEGER,
+  created_at INTEGER NOT NULL,
+  title_en TEXT,                                -- 영어 화면용(K-03). 없으면 title
+  body_en TEXT
+);
+
+-- 앱 푸시 구독(K-05): 브라우저 Push API 구독 endpoint·keys 또는 앱 기기 토큰. 구독이 있는 사용자에게만 notify() 가 push 를 보낸다
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  keys TEXT,                                    -- JSON { p256dh, auth }
   created_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS push_subscriptions_user ON push_subscriptions(user_id);
 
 -- 개발 모드에서는 이메일·SMS·푸시가 실제로 나가지 않고 여기 쌓인다(/dev/outbox 에서 확인)
 CREATE TABLE IF NOT EXISTS outbox (

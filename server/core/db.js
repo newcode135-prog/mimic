@@ -10,6 +10,10 @@ export function openDb(dataDir) {
   const db = new DatabaseSync(path.join(dataDir, 'mimic.db'));
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   db.exec(fs.readFileSync(path.join(here, 'schema.sql'), 'utf8'));
+  // 예전 DB 에 나중에 생긴 열을 더한다(CREATE TABLE IF NOT EXISTS 는 열을 추가하지 않음)
+  for (const [table, col] of [['notifications', 'title_en'], ['notifications', 'body_en']]) {
+    if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} TEXT`);
+  }
   return db;
 }
 

@@ -1,0 +1,53 @@
+/* 환경설정·연동 화면(integrations 모듈) */
+.ig-page { max-width: 860px; }
+.ig-card { margin-bottom: 16px; }
+.ig-card + .ig-card { margin-top: 0; }
+.ig-card > p { margin: 6px 0 12px; }
+.ig-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ig-head h3 { margin: 0; }
+.ig-ic { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-strong); }
+
+.ig-row { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line-2); }
+.ig-row:first-child { padding-top: 0; }
+.ig-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.ig-text { flex: 1; min-width: 0; }
+.ig-title { font-weight: 600; margin-bottom: 2px; }
+.ig-ctl { flex: none; display: flex; align-items: center; }
+.ig-select { width: 180px; }
+
+.ig-grid { display: grid; grid-template-columns: 120px 1fr; gap: 10px 14px; align-items: center; margin: 12px 0; }
+.ig-label { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.ig-copy { display: flex; align-items: center; gap: 6px; min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 4px 4px 4px 10px; }
+.ig-copy code, .ig-copy pre { flex: 1; min-width: 0; margin: 0; font: 12.5px/1.5 ui-monospace, 'Cascadia Code', Consolas, monospace; overflow-x: auto; white-space: nowrap; }
+.ig-copy.multi { align-items: flex-start; }
+.ig-copy.multi pre { white-space: pre; max-height: 220px; padding: 6px 0; }
+
+.ig-list { display: flex; flex-direction: column; }
+.ig-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line-2); }
+.ig-item > div:first-child { flex: 1; min-width: 0; }
+.ig-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.ig-table { overflow-x: auto; }
+.ig-table td .badge { margin-left: 6px; }
+.ig-empty { padding: 8px 0 0; }
+
+.ig-note { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--accent-soft); color: #8a4a1c; font-size: 13px; margin-bottom: 8px; }
+.ig-warn { display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--accent-soft); color: #8a4a1c; font-size: 13px; }
+.ig-code { font: 800 30px/1 ui-monospace, Consolas, monospace; letter-spacing: 8px; color: var(--brand-strong); background: var(--brand-soft); border-radius: var(--radius); padding: 14px 18px; display: inline-block; margin: 12px 0 8px; }
+
+.ig-scope { align-items: flex-start; padding: 4px 0; }
+.ig-scope.off { opacity: .55; cursor: not-allowed; }
+.ig-scopes { margin-top: 14px; }
+.ig-scopes summary { cursor: pointer; color: var(--brand-strong); font-weight: 600; font-size: 13px; }
+.ig-scopes ul { margin: 8px 0 0; padding-left: 18px; }
+.ig-scopes li { margin: 4px 0; }
+.ig-scopes li code { margin: 0 8px; font-size: 12px; color: var(--ink-3); }
+.ig-hr { border: 0; border-top: 1px solid var(--line-2); margin: 16px 0; }
+.ig-steps { margin: 10px 0 0; padding-left: 18px; }
+
+@media (max-width: 640px) {
+  .ig-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  .ig-select { width: 100%; }
+  .ig-grid { grid-template-columns: 1fr; gap: 4px; }
+  .ig-label { margin-top: 6px; }
+  .ig-item { flex-wrap: wrap; }
+}

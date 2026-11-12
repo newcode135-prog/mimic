@@ -19,16 +19,69 @@ export async function api(path, { method = 'GET', body, headers = {}, signal } =
   const res = await fetch(path, opts);
   const type = res.headers.get('content-type') || '';
   const data = type.includes('application/json') ? await res.json() : await res.text();
-  if (!res.ok) throw new ApiError(res.status, data?.error || 'http_' + res.status, data?.message || '요청을 처리하지 못했습니다');
+  if (!res.ok) {
+    const code = data?.error || 'http_' + res.status;
+    // 서버 메시지는 한국어라 영어 화면에서는 자주 나오는 오류 코드를 영어 문장으로 바꾼다(K-03). 표에 없으면 서버 메시지 그대로
+    const msg = (lang === 'en' && ERRORS_EN[code]) || data?.message || t('요청을 처리하지 못했습니다', 'The request could not be completed');
+    throw new ApiError(res.status, code, msg);
+  }
   return data;
 }
+const ERRORS_EN = {
+  login_required: 'Please log in first',
+  account_suspended: 'Your account is temporarily suspended',
+  account_locked: 'Your account is locked',
+  admin_only: 'Admins only',
+  session_required: 'Please log in on the web to use admin features',
+  premium_required: 'This is a Premium feature',
+  insufficient_scope: 'This token does not have permission for that',
+  not_found: 'Not found',
+  invalid_input: 'Please check what you entered',
+  invalid_name: 'That name cannot be used',
+  invalid_value: 'That value is not allowed',
+  invalid_email: 'Please enter a valid email address',
+  invalid_code: 'The code is not valid',
+  weak_password: 'Use 6–16 characters mixing letters, numbers and symbols',
+  wrong_password: 'Wrong password',
+  terms_required: 'Please agree to the required terms',
+  email_taken: 'This email is already in use',
+  phone_taken: 'This phone number is already in use',
+  too_many_requests: 'Too many requests. Please try again later',
+  too_many_attempts: 'Too many attempts. Please try again later',
+  storage_full: 'Not enough storage space',
+  quota_exceeded: 'Transfer quota exceeded',
+  monthly_quota: 'Monthly transfer quota exceeded',
+  daily_quota: 'Daily download quota exceeded',
+  app_quota: 'Quota for connected apps exceeded',
+  region_blocked: 'Not available in your region',
+  blocked: 'This content has been blocked',
+  share_expired: 'This share link has expired',
+  share_not_found: 'Share link not found',
+  payments_unavailable: 'Payments are temporarily unavailable',
+  server_error: 'A server error occurred',
+};
 
 // ---------- 언어 ----------
-let lang = localStorage.getItem('mimic_lang') || (navigator.language?.startsWith('ko') ? 'ko' : 'ko');
+const stored = () => {
+  try {
+    return localStorage.getItem('mimic_lang');
+  } catch {
+    return null;
+  }
+};
+const saved = stored();
+let lang = saved === 'ko' || saved === 'en' ? saved : navigator.language?.toLowerCase().startsWith('ko') ? 'ko' : 'en';
+document.documentElement.lang = lang;
 export const getLang = () => lang;
+// 이 기기에서 언어를 직접 고른 적이 있는지(없으면 계정 언어를 따른다, K-03)
+export const hasSavedLang = () => ['ko', 'en'].includes(stored());
 export function setLang(l) {
+  if (l !== 'ko' && l !== 'en') return;
   lang = l;
-  localStorage.setItem('mimic_lang', l);
+  document.documentElement.lang = l;
+  try {
+    localStorage.setItem('mimic_lang', l);
+  } catch {}
 }
 // t('모든 파일', 'All files') — 한국어 문장과 영어 문장을 함께 적는다(K-03)
 export const t = (ko, en) => (lang === 'en' && en ? en : ko);
@@ -62,7 +115,7 @@ export function loadCss(href) {
 
 // ---------- 형식 ----------
 export function formatBytes(n) {
-  if (n == null) return '무제한';
+  if (n == null) return t('무제한', 'Unlimited');
   if (n < 1024) return `${n} B`;
   const u = ['KB', 'MB', 'GB', 'TB', 'PB'];
   let i = -1;
@@ -123,7 +176,7 @@ export function toast(message, kind = '') {
   box.append(el);
   setTimeout(() => el.remove(), 3200);
 }
-export const toastError = (e) => toast(e?.message || '오류가 발생했습니다', 'error');
+export const toastError = (e) => toast(e?.message || t('오류가 발생했습니다', 'Something went wrong'), 'error');
 
 // modal({ title, body: Node|string, wide, actions:[{ label, kind:'primary'|'danger', onClick(close) → false 면 닫지 않음 }] }) → close()
 export function modal({ title, body, actions = [], wide = false, onClose } = {}) {
@@ -151,7 +204,7 @@ export function modal({ title, body, actions = [], wide = false, onClose } = {})
   const box = h(
     'div',
     { class: `modal ${wide ? 'wide' : ''}`, role: 'dialog', 'aria-modal': 'true' },
-    h('div', { class: 'modal-head' }, h('h3', {}, title || ''), h('button', { class: 'btn ghost icon-btn', 'aria-label': '닫기', onclick: close, html: icon('close') })),
+    h('div', { class: 'modal-head' }, h('h3', {}, title || ''), h('button', { class: 'btn ghost icon-btn', 'aria-label': t('닫기', 'Close'), onclick: close, html: icon('close') })),
     h('div', { class: 'modal-body' }, typeof body === 'string' ? h('div', { html: body }) : body),
     actions.length ? foot : null,
   );
@@ -161,7 +214,7 @@ export function modal({ title, body, actions = [], wide = false, onClose } = {})
   box.querySelector('input,textarea,select')?.focus();
   return close;
 }
-export function confirmDialog(title, message, { okLabel = '확인', danger = false } = {}) {
+export function confirmDialog(title, message, { okLabel = t('확인', 'OK'), danger = false } = {}) {
   return new Promise((resolve) => {
     let done = false;
     modal({
@@ -169,13 +222,13 @@ export function confirmDialog(title, message, { okLabel = '확인', danger = fal
       body: h('p', {}, message),
       onClose: () => !done && resolve(false),
       actions: [
-        { label: '취소', onClick: () => ((done = true), resolve(false)) },
+        { label: t('취소', 'Cancel'), onClick: () => ((done = true), resolve(false)) },
         { label: okLabel, kind: danger ? 'danger solid' : 'primary', onClick: () => ((done = true), resolve(true)) },
       ],
     });
   });
 }
-export function promptDialog(title, { label = '', value = '', placeholder = '', okLabel = '확인' } = {}) {
+export function promptDialog(title, { label = '', value = '', placeholder = '', okLabel = t('확인', 'OK') } = {}) {
   return new Promise((resolve) => {
     let done = false;
     const input = h('input', { class: 'input', value, placeholder });
@@ -184,7 +237,7 @@ export function promptDialog(title, { label = '', value = '', placeholder = '', 
       body: h('div', { class: 'field' }, label ? h('label', {}, label) : null, input),
       onClose: () => !done && resolve(null),
       actions: [
-        { label: '취소', onClick: () => ((done = true), resolve(null)) },
+        { label: t('취소', 'Cancel'), onClick: () => ((done = true), resolve(null)) },
         { label: okLabel, kind: 'primary', onClick: () => ((done = true), resolve(input.value.trim())) },
       ],
     });
@@ -224,7 +277,7 @@ export async function useComponent(name) {
 }
 export async function callComponent(name, fn, ...args) {
   const mod = await useComponent(name);
-  if (!mod?.[fn]) return toast('이 기능은 준비 중입니다');
+  if (!mod?.[fn]) return toast(t('이 기능은 준비 중입니다', 'This feature is coming soon'));
   return mod[fn](...args);
 }
 

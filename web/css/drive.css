@@ -1,0 +1,93 @@
+/* 드라이브 화면·폴더 고르기 창 전용 */
+.drive-page { min-height: calc(100vh - var(--topbar) - 120px); border-radius: var(--radius); transition: box-shadow .15s, background .15s; }
+.drive-page.dropping { background: var(--brand-soft); box-shadow: inset 0 0 0 2px var(--brand); }
+.drive-head .crumbs { flex-wrap: wrap; min-width: 0; }
+.drive-head .crumbs .sep { display: inline-flex; color: var(--ink-3); }
+.drive-head .crumbs .sep .icon { width: 16px; height: 16px; }
+.drive-head .crumbs a { color: var(--ink-2); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drive-head .crumbs .here { color: var(--ink); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drive-head .crumbs .count { margin-left: 6px; font-size: 13px; font-weight: 600; color: var(--ink-3); }
+.drive-tools { flex-wrap: wrap; }
+.drive-notice { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 14px; border-radius: var(--radius); background: var(--accent-soft); color: var(--ink-2); font-size: 13px; }
+.drive-notice .icon { color: var(--accent); }
+
+/* 격자 카드 */
+.drive-body .file-card .pick { position: absolute; top: 16px; left: 16px; z-index: 1; width: 24px; height: 24px; padding: 3px; border-radius: 50%; border: 2px solid #fff; background: rgba(27, 36, 48, .28); color: transparent; cursor: pointer; opacity: 0; transition: opacity .12s; }
+.drive-body .file-card .pick .icon { width: 14px; height: 14px; stroke-width: 3; }
+.drive-body .file-card:hover .pick, .drive-body.has-sel .file-card .pick { opacity: 1; }
+.drive-body .file-card.selected .pick { background: var(--brand); border-color: var(--brand); color: #fff; }
+.drive-body .file-card .more { position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; background: var(--surface); box-shadow: var(--shadow); opacity: 0; }
+.drive-body .file-card:hover .more, .drive-body .file-card.selected .more { opacity: 1; }
+.drive-body .file-card:focus-visible { outline: 2px solid var(--brand); }
+.drive-body .file-card:focus-within .pick, .drive-body .file-card:focus-within .more { opacity: 1; }
+.drive-body .file-meta { flex-wrap: wrap; gap: 6px; }
+.drive-body .file-meta .badge { height: 18px; font-size: 11px; }
+.kind-icon { display: inline-flex; color: var(--ink-3); }
+.file-thumb .kind-icon .icon { width: 44px; height: 44px; stroke-width: 1.3; }
+.k-folder { color: var(--brand); }
+.k-video { color: #6a5acd; }
+.k-image { color: var(--accent); }
+.k-audio { color: #c2417a; }
+.k-zip, .k-torrent { color: var(--warn); }
+.star-on { display: inline-flex; color: var(--accent); }
+.star-on .icon { width: 14px; height: 14px; fill: currentColor; }
+
+/* 목록 */
+.file-list { padding: 0; overflow: hidden; }
+.file-list .table th { background: var(--surface); }
+.file-list tbody tr:hover td { background: var(--bg); }
+.file-list tbody tr.selected td { background: var(--brand-soft); }
+.file-list .cell-pick { width: 40px; padding-right: 0; }
+.file-list .cell-more { width: 48px; text-align: right; }
+.file-list .pick { width: 20px; height: 20px; padding: 2px; border-radius: 6px; border: 1.5px solid var(--line); background: var(--surface); color: transparent; cursor: pointer; }
+.file-list .pick .icon { width: 13px; height: 13px; stroke-width: 3; }
+.file-list tr.selected .pick { background: var(--brand); border-color: var(--brand); color: #fff; }
+.file-list .more { width: 30px; height: 30px; opacity: .55; }
+.file-list tr:hover .more, .file-list tr:focus-within .more { opacity: 1; }
+.file-list tbody tr:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.name-cell { min-width: 0; }
+.name-cell .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46vw; }
+.nowrap { white-space: nowrap; }
+
+/* 선택 도구 모음 */
+.sel-bar { position: fixed; z-index: 30; left: calc(50% + var(--sidebar) / 2); bottom: 24px; transform: translate(-50%, 140%); display: flex; align-items: center; gap: 2px; padding: 6px 8px 6px 16px; border-radius: 999px; background: var(--ink); color: #fff; box-shadow: var(--shadow-lg); opacity: 0; pointer-events: none; transition: transform .18s, opacity .18s; max-width: calc(100vw - 32px); }
+.sel-bar.show { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+.sel-bar .sel-count { font-weight: 700; margin-right: 8px; white-space: nowrap; }
+.sel-bar .btn { color: #fff; }
+.sel-bar .btn:hover { background: rgba(255, 255, 255, .12); }
+.sel-bar .btn.danger { color: #ffb4a8; border-color: transparent; }
+
+/* 메뉴 체크 표시가 없는 줄도 글자를 맞춘다 */
+.drive-check-menu button:not(:has(svg)) { padding-left: 38px; }
+
+/* 자세한 정보 */
+.drive-details .table th { width: 92px; white-space: nowrap; }
+.drive-details .table td { word-break: break-all; }
+.drive-details .hash { font-size: 12px; }
+.drive-details .break { word-break: break-all; }
+.link-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: var(--radius); background: var(--bg); border: 1px solid var(--line); }
+.link-card p { margin: 0; }
+.link-card .btn { align-self: flex-start; }
+
+/* 폴더 고르기 */
+.picker { display: flex; flex-direction: column; gap: 10px; }
+.picker-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 13px; }
+.picker-crumbs .sep { color: var(--ink-3); }
+.picker-crumbs .linkish { border: 0; background: none; padding: 2px 4px; font: inherit; color: var(--brand-strong); cursor: pointer; border-radius: 4px; }
+.picker-crumbs .linkish:hover { background: var(--line-2); }
+.picker-list { display: flex; flex-direction: column; min-height: 180px; max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 4px; }
+.picker-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 0; background: none; border-radius: 6px; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.picker-item:hover { background: var(--line-2); }
+.picker-item > .icon { color: var(--brand); }
+.picker-item span:first-of-type { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-item .chev { color: var(--ink-3); display: inline-flex; }
+.picker-empty { padding: 24px 12px; text-align: center; }
+.picker > .btn { align-self: flex-start; }
+
+@media (max-width: 860px) {
+  .sel-bar { left: 50%; bottom: 16px; }
+  .hide-sm { display: none; }
+  .drive-body .file-card .pick { opacity: 1; }
+  .drive-body .file-card .more { opacity: 1; }
+  .name-cell .name { max-width: 52vw; }
+}

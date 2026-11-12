@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>미믹 클라우드 저장</title>
+<style>
+  :root { --brand: #0f9d8f; --brand-soft: #e3f5f2; --ink: #1b2430; --ink-3: #8a93a3; --line: #e7e3dc; --bg: #faf8f4; --danger: #d64545; }
+  * { box-sizing: border-box; }
+  body { width: 360px; margin: 0; font: 13px/1.5 'Pretendard', 'Malgun Gothic', system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; background: #fff; border-bottom: 1px solid var(--line); }
+  header b { font-size: 15px; }
+  header .who { margin-left: auto; color: var(--ink-3); font-size: 12px; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  section { margin: 10px 12px; padding: 12px; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
+  h3 { margin: 0 0 6px; font-size: 13px; }
+  .muted { color: var(--ink-3); font-size: 12px; }
+  button { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .spacer { flex: 1; }
+  .code { font-size: 20px; font-weight: 800; letter-spacing: 2px; text-align: center; padding: 8px; background: var(--brand-soft); border-radius: 8px; margin: 8px 0; }
+  ul { list-style: none; margin: 6px 0; padding: 0; max-height: 260px; overflow: auto; }
+  li label { display: flex; gap: 8px; align-items: flex-start; padding: 6px 2px; border-bottom: 1px solid #f0ece6; cursor: pointer; }
+  li .kind { flex: none; font-size: 11px; font-weight: 700; color: var(--brand); width: 46px; }
+  li .url { word-break: break-all; font-size: 12px; }
+  li .label { display: block; color: var(--ink-3); font-size: 11px; }
+  .msg { margin: 6px 0 0; font-size: 12px; }
+  .msg.error { color: var(--danger); }
+  .streak { font-size: 22px; font-weight: 800; color: var(--brand); }
+  footer { padding: 4px 14px 12px; text-align: right; }
+  footer a { color: var(--ink-3); font-size: 12px; }
+</style>
+</head>
+<body>
+  <header><b>미믹</b><span>클라우드 저장</span><span class="who" id="who"></span></header>
+  <div id="main"></div>
+  <footer><a href="options.html" target="_blank">설정</a></footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

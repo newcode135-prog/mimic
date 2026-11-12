@@ -1,0 +1,44 @@
+{
+  "name": "mimic-desktop",
+  "productName": "Mimic",
+  "version": "0.1.0",
+  "private": true,
+  "description": "미믹 데스크톱 앱(Windows·macOS)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:win-legacy": "electron-builder --win -c.electronVersion=22.3.27 -c.directories.output=dist/legacy",
+    "dist:mac": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "app.mimic.desktop",
+    "productName": "Mimic",
+    "icon": "icon.png",
+    "artifactName": "Mimic-${version}-${os}-${arch}.${ext}",
+    "files": ["main.js", "preload.js", "icon.png", "package.json"],
+    "directories": { "output": "dist" },
+    "protocols": [
+      { "name": "Mimic", "schemes": ["mimic"] },
+      { "name": "Magnet link", "schemes": ["magnet"], "role": "Viewer" }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64", "ia32"] }]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
+      "category": "public.app-category.productivity"
+    }
+  }
+}

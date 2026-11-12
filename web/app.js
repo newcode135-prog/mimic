@@ -1,5 +1,5 @@
 // 화면 라우터. 각 주소는 web/pages/<페이지>.js 의 render(main, ctx) 가 그린다(docs/BUILD_SPEC.md 3장).
-import { getMe, h, icon, toast } from './ui.js';
+import { getMe, h, icon, toast, setLang, getLang, hasSavedLang, t } from './ui.js';
 import { mountLayout } from './layout.js';
 
 // [주소, 페이지 모듈, 레이아웃, 접근(public|guest|user|admin)] — 담당 모듈은 docs/BUILD_SPEC.md 표 참고
@@ -84,13 +84,14 @@ function comingSoon(page) {
     'div',
     { class: 'empty' },
     h('div', { html: icon('cloud') }),
-    h('h3', {}, '이 화면은 준비 중입니다'),
-    h('p', { class: 'small' }, `페이지 모듈: web/pages/${page}.js`),
+    h('h3', {}, t('이 화면은 준비 중입니다', 'This page is coming soon')),
+    h('p', { class: 'small' }, `${t('페이지 모듈', 'Page module')}: web/pages/${page}.js`),
   );
 }
 
 let cleanup = null;
 let seq = 0;
+let langFromUrl = false; // 이번 페이지에서 주소(?lang)로 언어를 정했으면 계정 언어로 덮지 않는다
 async function render() {
   const my = ++seq;
   try {
@@ -98,6 +99,21 @@ async function render() {
   } catch {}
   cleanup = null;
   document.querySelectorAll('.menu').forEach((m) => m.remove());
+  // URL 로케일(K-03): /en/faq·/en-US/faq·/ko/... 는 접두어를 ?lang= 로 바꾸고, ?lang=ko|en 은 주소에 남겨 공유 링크에도 언어가 실린다
+  const pre = /^\/(ko|en)(?:-[a-z]{2})?(?=\/|$)/i.exec(location.pathname);
+  if (pre) {
+    const sp = new URLSearchParams(location.search);
+    sp.set('lang', pre[1].toLowerCase());
+    history.replaceState({}, '', `${location.pathname.slice(pre[0].length) || '/'}?${sp}${location.hash}`);
+  }
+  const urlLang = new URLSearchParams(location.search).get('lang');
+  if (urlLang === 'ko' || urlLang === 'en') {
+    langFromUrl = true;
+    if (urlLang !== getLang()) {
+      setLang(urlLang);
+      if (hasSavedLang()) return location.reload(); // 저장이 안 되는 브라우저면 다시 불러오지 않고 이번 화면만 바꾼다(무한 새로고침 방지)
+    }
+  }
   const path = location.pathname;
   const query = Object.fromEntries(new URLSearchParams(location.search));
   const m = match(path);
@@ -110,16 +126,22 @@ async function render() {
     console.error(e);
   }
   if (my !== seq) return;
+  // 이 기기에서 언어를 고른 적이 없으면 계정에 저장된 언어를 따른다(K-03)
+  const accountLang = me?.user?.lang;
+  if ((accountLang === 'ko' || accountLang === 'en') && accountLang !== getLang() && !hasSavedLang() && !langFromUrl) {
+    setLang(accountLang);
+    if (hasSavedLang()) return location.reload(); // 저장이 안 되는 브라우저면 다시 불러오지 않고 이번 화면만 바꾼다(무한 새로고침 방지)
+  }
   if (m?.access === 'user' && !me) return navigate(`/login?next=${encodeURIComponent(path + location.search)}`, { replace: true });
   if (m?.access === 'guest' && me) return navigate(query.next || '/drive/all', { replace: true });
 
   const ctx = { params: m?.params || {}, query, me, user: me?.user || null, path, navigate, refreshMe: () => getMe(true) };
   const main = await mountLayout(m ? m.layout : 'site', ctx);
   if (my !== seq) return;
-  if (!m) return main.replaceChildren(h('div', { class: 'empty' }, h('h2', {}, '페이지를 찾을 수 없습니다'), h('a', { href: '/' }, '홈으로')));
+  if (!m) return main.replaceChildren(h('div', { class: 'empty' }, h('h2', {}, t('페이지를 찾을 수 없습니다', 'Page not found')), h('a', { href: '/' }, t('홈으로', 'Go home'))));
   if (m.access === 'admin' && !me?.user?.isAdmin) {
     if (!me) return navigate(`/login?next=${encodeURIComponent(path)}`, { replace: true });
-    return main.replaceChildren(h('div', { class: 'empty' }, h('h2', {}, '관리자만 볼 수 있는 화면입니다')));
+    return main.replaceChildren(h('div', { class: 'empty' }, h('h2', {}, t('관리자만 볼 수 있는 화면입니다', 'Admins only'))));
   }
   let mod;
   try {
@@ -138,8 +160,8 @@ async function render() {
     if (typeof ret === 'function') cleanup = ret;
   } catch (e) {
     console.error(e);
-    main.replaceChildren(h('div', { class: 'empty' }, h('h3', {}, '화면을 불러오지 못했습니다'), h('p', { class: 'small' }, e.message || '')));
-    toast(e.message || '오류가 발생했습니다', 'error');
+    main.replaceChildren(h('div', { class: 'empty' }, h('h3', {}, t('화면을 불러오지 못했습니다', 'Could not load this page')), h('p', { class: 'small' }, e.message || '')));
+    toast(e.message || t('오류가 발생했습니다', 'Something went wrong'), 'error');
   }
 }
 

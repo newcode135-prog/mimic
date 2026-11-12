@@ -1,0 +1,89 @@
+/* billing 모듈 전용(결제·구매 기록·쿼터·초대·쿠폰). 공통 토큰은 styles.css */
+.bl-page { max-width: 1120px; }
+.bl-page.site { margin: 0 auto; padding: 40px 24px 64px; }
+.bl-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+.bl-head h1, .bl-head h2 { margin: 0; }
+.bl-sub { color: var(--ink-2); margin: -12px 0 20px; }
+.bl-grid { display: grid; grid-template-columns: 300px 1fr; gap: 20px; align-items: start; }
+.bl-section-title { font-size: 15px; font-weight: 700; margin: 0 0 12px; }
+
+/* 왼쪽 혜택 요약 */
+.bl-benefits { background: linear-gradient(170deg, var(--brand-soft), var(--surface) 55%); }
+.bl-benefits ul { list-style: none; padding: 0; margin: 12px 0 16px; display: flex; flex-direction: column; gap: 12px; }
+.bl-benefits li { display: flex; gap: 10px; align-items: center; font-weight: 600; }
+.bl-benefits li .icon { color: var(--brand-strong); }
+
+/* 상품 카드 */
+.bl-plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; padding-top: 6px; }
+.bl-plan { position: relative; text-align: left; display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--surface); font: inherit; color: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.bl-plan:hover { border-color: var(--brand); }
+.bl-plan.selected { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.bl-plan .bl-plan-name { font-weight: 700; color: var(--ink-2); }
+.bl-plan .badge { position: absolute; top: -10px; right: 12px; }
+.bl-price { font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+.bl-price small { font-size: 13px; font-weight: 600; color: var(--ink-3); margin-left: 2px; }
+.bl-strike { text-decoration: line-through; color: var(--ink-3); font-size: 12px; }
+.bl-then { font-size: 12px; color: var(--ink-2); }
+
+/* 결제 수단 */
+.bl-methods { display: flex; flex-wrap: wrap; gap: 8px; }
+.bl-method { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; font-weight: 600; background: var(--surface); }
+.bl-method input { accent-color: var(--brand); margin: 0; }
+.bl-method.selected { border-color: var(--brand); background: var(--brand-soft); }
+.bl-method.disabled { opacity: .45; cursor: not-allowed; }
+
+/* 결제 요약 */
+.bl-summary { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.bl-summary .bl-total { font-size: 26px; font-weight: 800; }
+.bl-agree { font-size: 12px; color: var(--ink-3); margin-top: 10px; }
+.bl-links { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; margin-top: 8px; }
+.bl-guide { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.bl-notice { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--accent-soft); color: #9a4a17; font-size: 13px; font-weight: 600; }
+.bl-notice.brand { background: var(--brand-soft); color: var(--brand-strong); }
+
+/* 추가 상품·통계 타일 */
+.bl-addons { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.bl-addon { display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
+.bl-addon p { font-size: 13px; color: var(--ink-2); margin: 0; flex: 1; }
+.bl-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.bl-stat { padding: 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+.bl-stat b { display: block; font-size: 22px; letter-spacing: -.02em; }
+.bl-stat span { font-size: 12px; color: var(--ink-3); }
+
+/* 쿼터 막대 */
+.bl-meter { display: flex; flex-direction: column; gap: 6px; padding: 14px 0; border-bottom: 1px solid var(--line-2); }
+.bl-meter:last-child { border-bottom: 0; }
+.bl-meter .row b { font-size: 14px; }
+.bl-meter .progress { height: 10px; }
+.bl-meter .progress.app { height: 5px; }
+.bl-meter .progress.app > span { background: var(--accent); }
+.bl-meter .bl-app { display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; align-items: center; font-size: 12px; color: var(--ink-3); }
+
+/* 초대 */
+.bl-hero { background: linear-gradient(120deg, var(--brand-soft), var(--accent-soft)); border: 0; }
+.bl-hero h2 { font-size: 22px; }
+.bl-copy { display: flex; gap: 8px; margin-top: 8px; }
+.bl-copy .input { flex: 1; background: var(--surface); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.bl-ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.bl-way { display: flex; flex-direction: column; gap: 8px; }
+.bl-way .icon { width: 28px; height: 28px; color: var(--brand-strong); }
+.bl-way p { font-size: 13px; color: var(--ink-2); margin: 0; flex: 1; }
+
+/* 출석 */
+.bl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.bl-chip { padding: 4px 10px; border-radius: 999px; background: var(--line-2); font-size: 12px; color: var(--ink-2); }
+.bl-chip.reward { background: var(--accent-soft); color: #9a4a17; font-weight: 700; }
+
+/* 쿠폰 창 */
+.bl-coupon-input { text-transform: uppercase; letter-spacing: .08em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+@media (max-width: 860px) {
+  .bl-grid { grid-template-columns: 1fr; }
+  .bl-page.site { padding: 24px 16px 48px; }
+  .bl-plans { grid-template-columns: 1fr; }
+  .bl-meter .bl-app { grid-template-columns: 1fr auto; grid-template-areas: 'l v' 'b b'; row-gap: 4px; }
+  .bl-meter .bl-app > :nth-child(1) { grid-area: l; }
+  .bl-meter .bl-app > :nth-child(2) { grid-area: b; }
+  .bl-meter .bl-app > :nth-child(3) { grid-area: v; }
+  .table-scroll { overflow-x: auto; }
+}

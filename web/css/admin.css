@@ -1,0 +1,27 @@
+/* 관리자 화면. 접두어 ad- */
+.ad-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.ad-stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+.ad-stat b { display: block; font-size: 24px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.ad-stat span { font-size: 12px; color: var(--ink-3); }
+.ad-stat.warn b { color: #c4561a; }
+.ad-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.ad-toolbar .input { width: auto; min-width: 140px; }
+.ad-toolbar .grow { flex: 1; min-width: 200px; }
+.ad-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.ad-wrap .table td { font-size: 13px; }
+.ad-wrap tr.click { cursor: pointer; }
+.ad-wrap tr.click:hover td { background: var(--line-2); }
+.ad-trunc { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ad-mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
+.ad-pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 12px; color: var(--ink-3); font-size: 13px; }
+.ad-kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px 14px; font-size: 13px; }
+.ad-kv dt { color: var(--ink-3); }
+.ad-kv dd { margin: 0; word-break: break-all; }
+.ad-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.ad-cols .card { margin: 0; }
+.ad-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.ad-actions .card { margin: 0; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.ad-actions .row .input { flex: 1; }
+.ad-soon { padding: 40px 16px; text-align: center; color: var(--ink-3); background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius); }
+.ad-detail { white-space: pre-wrap; font-size: 12px; color: var(--ink-2); max-height: 120px; overflow: auto; }
+.ad-danger { color: var(--danger); }

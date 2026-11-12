@@ -7,9 +7,10 @@ import { EventEmitter } from 'node:events';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadConfig } from './core/config.js';
 import { openDb } from './core/db.js';
-import { loadUser, requireUser, publicUser } from './core/auth.js';
+import { loadUser, requireUser, publicUser, hasScope } from './core/auth.js';
 import { usage } from './core/files.js';
 import { capacityOf, limitsFor, isPremium } from './core/plans.js';
+import { fail } from './core/util.js';
 import { gcBlobs } from './core/storage.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -20,27 +21,58 @@ export async function createApp(overrides = {}) {
   const db = openDb(cfg.dataDir);
   const events = new EventEmitter(); // 모듈 간 이벤트: user:created, user:login, payment:completed, file:created, offline:completed
   events.setMaxListeners(50);
-  const ctx = { db, cfg, events, modules: {}, failedModules: [] };
+  // hooks.activity: 로그인한 요청마다 동기 함수 (req, ctx) 로 불린다(모든 API 보다 먼저, 모듈은 register 에서 push). 던지면 그 요청은 오류로 끝난다(H-04 계정 공유 탐지 등)
+  const ctx = { db, cfg, events, modules: {}, failedModules: [], hooks: { activity: [] } };
 
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 'loopback');
-  app.use(express.json({ limit: '2mb' }));
-  app.use(express.urlencoded({ extended: false }));
+  // WebDAV 는 요청 본문이 파일 그 자체라 JSON 해석을 건너뛴다(Express 경로는 대소문자 구분 없음 → /WEBDAV 도 같게, G-01)
+  const jsonBody = express.json({ limit: '2mb' });
+  app.use((req, res, next) => (/^\/webdav(\/|$)/i.test(req.path) ? next() : jsonBody(req, res, next)));
+  // 폼 본문은 소셜 로그인 콜백(Apple form_post·개발용 화면)에만. 다른 API 는 CORS 사전 요청 없는 단순 폼 POST 를 받지 않는다(K-06)
+  app.use('/api/auth/oauth', express.urlencoded({ extended: false }));
   app.use(loadUser(db));
+  app.use((req, _res, next) => {
+    if (req.user) for (const fn of ctx.hooks.activity) fn(req, ctx);
+    next();
+  });
+  // 관리자 상태 변경은 같은 출처에서 온 요청만 받는다(K-06 CSRF 심층 방어. 브라우저는 POST·PATCH·DELETE 에 Origin 을 붙인다)
+  const ownOrigin = new URL(cfg.baseUrl).origin;
+  const hostOf = (o) => {
+    try {
+      return new URL(o).host;
+    } catch {
+      return null;
+    }
+  };
+  app.use('/api/admin', (req, _res, next) => {
+    const o = req.get('origin');
+    if (o && !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && o !== ownOrigin && hostOf(o) !== req.get('host')) fail(403, 'bad_origin', '다른 사이트에서 보낸 요청은 처리하지 않습니다');
+    next();
+  });
+  // 개발용 창구(인증코드 outbox·개발용 소셜 로그인)는 이 컴퓨터에서 온 요청만(H-01). 프록시 뒤면 req.ip 는 X-Forwarded-For 의 실제 주소
+  const localOnly = (req, _res, next) => (['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip) ? next() : fail(404, 'not_found', '없는 API 입니다'));
+  app.use(['/api/dev', /^\/api\/auth\/oauth\/[^/]+\/dev\/?$/i], localOnly);
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, modules: Object.keys(ctx.modules), failed: ctx.failedModules }));
   app.get('/api/config', (_req, res) =>
     res.json({
       dev: cfg.dev,
       oauth: Object.fromEntries(Object.entries(cfg.oauth).map(([k, v]) => [k, !!v.clientId])),
-      paymentsTestMode: !cfg.payments.tossSecretKey,
+      paymentsTestMode: cfg.dev && !cfg.payments.tossSecretKey,
       telegram: !!cfg.telegramToken,
     }),
   );
   app.get('/api/me', requireUser, (req, res) => {
     const u = req.user;
-    res.json({ user: publicUser(u), premium: isPremium(u), storage: { used: usage(db, u.id), total: capacityOf(u) }, limits: limitsFor(u) });
+    const user = publicUser(u);
+    // 설정·초대 코드는 account 권한(G-05)이 있는 토큰에만. CLI whoami 는 id·이메일·이름만 쓴다
+    if (req.authKind === 'token' && !hasScope(req, 'account')) {
+      delete user.settings;
+      delete user.inviteCode;
+    }
+    res.json({ user, premium: isPremium(u), storage: { used: usage(db, u.id), total: capacityOf(u) }, limits: limitsFor(u) });
   });
   if (cfg.dev) {
     app.get('/api/dev/outbox', (_req, res) => res.json({ items: db.prepare('SELECT * FROM outbox ORDER BY created_at DESC LIMIT 100').all() }));
@@ -59,6 +91,9 @@ export async function createApp(overrides = {}) {
       console.error(`[module ${name}] 불러오기 실패: ${e.stack || e.message}`);
     }
   }
+  // MIMIC_ADMIN_EMAIL 로 지정한 계정은 서버가 켜질 때 관리자로 지정한다
+  if (cfg.adminEmail) db.prepare('UPDATE users SET is_admin=1 WHERE email=?').run(cfg.adminEmail.trim().toLowerCase());
+
   for (const [name, mod] of Object.entries(ctx.modules)) {
     try {
       await mod.register?.(app, ctx);

@@ -39,23 +39,27 @@ export function grant(db, userId, { kind, amount, period = null, validFrom = now
   ).run(crypto.randomUUID(), userId, kind, amount, period, validFrom, validTo, reason, now());
 }
 
-export function monthlyLimit(db, userId, kind) {
-  const { month } = periodKeys();
-  return MONTHLY_QUOTA[kind] + granted(db, userId, kind, month);
+// ts: 그 시각이 속한 달의 한도(기본 지금)
+export function monthlyLimit(db, userId, kind, ts = now()) {
+  return MONTHLY_QUOTA[kind] + granted(db, userId, kind, periodKeys(ts).month, ts);
 }
+
+// 연결 앱 상한은 기본 월 쿼터의 25%(추가 쿼터는 넣지 않음, 8-7)
+const appCap = (kind) => Math.floor(MONTHLY_QUOTA[kind] * APP_QUOTA_SHARE);
+// bytes=0(새 작업·감속 여부만 묻는 호출)이면 한도에 딱 닿은 것도 초과로 본다
+const exceeds = (n, bytes, cap) => n + Math.max(bytes, 1) > cap;
 
 // 전송 전에 호출. { ok, reason, slow } — slow 가 true 면 막지 말고 SLOW_BPS 로 감속한다
 export function checkTransfer(db, user, kind, bytes = 0, source = 'official') {
   const { day, month } = periodKeys();
-  const limit = monthlyLimit(db, user.id, kind);
-  if (used(db, user.id, month, kind) + bytes > limit) return { ok: false, reason: 'monthly_quota', slow: kind === 'down' };
+  if (exceeds(used(db, user.id, month, kind), bytes, monthlyLimit(db, user.id, kind))) return { ok: false, reason: 'monthly_quota', slow: kind === 'down' };
   const premium = isPremium(user);
-  if (!premium && kind === 'down' && used(db, user.id, day, 'down') + bytes > LIMITS.free.dailyDown) {
+  if (!premium && kind === 'down' && exceeds(used(db, user.id, day, 'down'), bytes, LIMITS.free.dailyDown)) {
     return { ok: false, reason: 'daily_quota', slow: true };
   }
   if (source === 'app') {
-    if (used(db, user.id, month, kind, 'app') + bytes > limit * APP_QUOTA_SHARE) return { ok: false, reason: 'app_quota', slow: kind === 'down' };
-    if (!premium && kind === 'down' && used(db, user.id, day, 'down', 'app') + bytes > FREE_APP_DAILY_DOWN) {
+    if (exceeds(used(db, user.id, month, kind, 'app'), bytes, appCap(kind))) return { ok: false, reason: 'app_quota', slow: kind === 'down' };
+    if (!premium && kind === 'down' && exceeds(used(db, user.id, day, 'down', 'app'), bytes, FREE_APP_DAILY_DOWN)) {
       return { ok: false, reason: 'app_daily_quota', slow: true };
     }
   }
@@ -94,9 +98,11 @@ export function summary(db, user) {
   for (const k of KINDS) {
     const limit = monthlyLimit(db, user.id, k);
     out.month[k] = { used: used(db, user.id, month, k), limit };
-    out.app[k] = { used: used(db, user.id, month, k, 'app'), limit: Math.floor(limit * APP_QUOTA_SHARE) };
+    out.app[k] = { used: used(db, user.id, month, k, 'app'), limit: appCap(k) };
   }
-  out.today.down = { used: used(db, user.id, day, 'down'), limit: isPremium(user) ? null : LIMITS.free.dailyDown };
+  const premium = isPremium(user);
+  out.today.down = { used: used(db, user.id, day, 'down'), limit: premium ? null : LIMITS.free.dailyDown };
+  out.today.appDown = { used: used(db, user.id, day, 'down', 'app'), limit: premium ? null : FREE_APP_DAILY_DOWN };
   out.today.cloudTasks = cloudTaskAllowance(db, user);
   return out;
 }

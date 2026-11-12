@@ -1,0 +1,43 @@
+/* 공유 모듈 전용 스타일(미믹 디자인 토큰 사용) */
+.share-summary { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 16px; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--line-2); }
+.share-summary .share-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.share-chips .chip { height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font: inherit; color: var(--ink-2); cursor: pointer; }
+.share-chips .chip.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-strong); font-weight: 700; }
+.share-pw-row { margin-top: 4px; }
+.share-pw { font-family: ui-monospace, Consolas, monospace; letter-spacing: .12em; max-width: 200px; }
+.share-pw-show { font-family: ui-monospace, Consolas, monospace; font-size: 20px; font-weight: 700; letter-spacing: .2em; color: var(--brand-strong); }
+.share-done { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: var(--ok); font-weight: 700; }
+.share-result .btn.block { margin-bottom: 6px; }
+.share-sep { border: 0; border-top: 1px solid var(--line-2); margin: 18px 0 14px; }
+
+.share-find .input { width: 200px; }
+[data-page="shared"] .tabs { overflow-y: hidden; } /* 공통 .tabs 의 -1px 여백 때문에 세로 스크롤바가 생기는 것 방지 */
+.share-table { padding: 0; overflow-x: auto; }
+.share-table .share-name { font-weight: 600; word-break: break-all; }
+.share-actions { text-align: right; white-space: nowrap; }
+.share-actions .btn + .btn { margin-left: 4px; }
+
+.share-view { max-width: 1000px; }
+.share-hero { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.share-hero h2 { word-break: break-all; }
+.share-hero-icon { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: var(--brand-soft); color: var(--brand-strong); flex: none; }
+.share-meta { flex-wrap: wrap; gap: 6px; }
+.share-hero-actions { flex-wrap: wrap; }
+.share-join { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 18px; border-radius: var(--radius); background: var(--accent-soft); font-weight: 600; }
+.share-join .spacer { min-width: 220px; }
+.share-crumbs { font-size: 16px; flex-wrap: wrap; }
+.share-toggle .btn.on { background: var(--brand-soft); color: var(--brand-strong); }
+.share-more { width: 28px; height: 28px; }
+.share-lock { max-width: 420px; margin: 40px auto; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.share-lock .field { width: 100%; margin: 8px 0 4px; }
+.share-preview { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.share-media { max-width: 100%; max-height: 70vh; border-radius: var(--radius-sm); background: #000; }
+audio.share-media { background: none; width: 100%; }
+.share-text { align-self: stretch; margin: 0; padding: 12px 14px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 13px/1.5 ui-monospace, Consolas, monospace; background: var(--bg); border: 1px solid var(--line-2); border-radius: var(--radius-sm); }
+
+@media (max-width: 860px) {
+  .share-find { width: 100%; }
+  .share-find .input { flex: 1; width: auto; }
+  .share-hero-actions { width: 100%; }
+}
