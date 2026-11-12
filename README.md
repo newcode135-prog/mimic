@@ -25,7 +25,7 @@
 | `area:A` ~ `area:K` | 기능 영역: A 클라우드 다운로드 · B 드라이브 · C 재생 · D 공유 · E 금고 · F 전송 쿼터 · G 연동 · H 회원 · I 결제 · J 안전·법무 · K 운영 |
 | `module:*` | 담당 코드 모듈(auth, drive, offline, media, share, vault, billing, integrations, admin-content, platforms, core, server-ops) |
 | `feature` · `decision` · `task` | 기능 구현 · 사용자 결정 필요 · 기반·운영 작업 |
-| `needs-verification` | PikPak 세부 동작을 아직 확인하지 못한 기능(4개) |
+| `needs-verification` | PikPak 세부 동작을 아직 확인하지 못한 기능(5개: 미리보기·공유 업데이트·금고 용량·추천 보상 Pro·관리자 화면) |
 
 이슈 제목의 `[A-01]` 같은 ID는 `docs/MIMIC_PLAN.md` 6장과 `docs/features.json`의 ID와 같습니다. 기능을 끝내면 `features.json`의 해당 `status`를 `done`으로 바꾸고 이슈를 닫습니다.
 
