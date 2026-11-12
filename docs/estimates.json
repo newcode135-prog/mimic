@@ -38,9 +38,10 @@
     "steps": [
       { "name": "코어 보안 수정·모듈 연결", "lo": 10, "hi": 15, "done": true },
       { "name": "전체 테스트 실행·충돌 수정", "lo": 15, "hi": 30, "done": true },
-      { "name": "기능 76개 2차 독립 검수·수정", "lo": 30, "hi": 50, "done": false },
-      { "name": "브라우저 실제 사용 흐름 점검", "lo": 20, "hi": 30, "done": false },
-      { "name": "새 폴더 설치 확인·GitHub 업로드·이슈 완료 처리", "lo": 15, "hi": 20, "done": false }
+      { "name": "기능 76개 2차 독립 검수·수정", "lo": 30, "hi": 50, "done": true },
+      { "name": "브라우저 실제 사용 흐름 점검", "lo": 20, "hi": 30, "done": true },
+      { "name": "새 폴더 설치 확인·GitHub 업로드·이슈 완료 처리", "lo": 15, "hi": 20, "done": true },
+      { "name": "코드로 가능한 남은 작업: K-03 영어 본문 + 작은 개선 7건(앱 연결 파일·푸시 알림 처리 등)", "lo": 40, "hi": 70, "done": false }
     ]
   },
   "history": []

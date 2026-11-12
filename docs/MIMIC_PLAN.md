@@ -483,9 +483,16 @@ npm ci
 # 환경변수(.env, 저장소에 커밋 금지)
 #   MIMIC_DATA=/Volumes/MimicData/mimic   ← 외장 디스크
 #   MIMIC_BASE_URL=https://<도메인>
-#   MIMIC_SECRET=<긴 임의 문자열>
+#   MIMIC_SECRET=<32자 이상 임의 문자열>   ← 운영에서 없거나 짧으면 서버가 시작을 거부함
 #   NODE_ENV=production
-#   GOOGLE_CLIENT_ID / FACEBOOK_CLIENT_ID / APPLE_* / TOSS_* / TELEGRAM_BOT_TOKEN
+#   MIMIC_ADMIN_EMAIL=<관리자 이메일>      ← 또는 npm run seed -- <이메일>
+#   MIMIC_SUPPORT_EMAIL=<고객센터 메일>
+#   MIMIC_COUNTRY_HEADER=CF-IPCountry     ← 프록시가 넣어 주는 국가 헤더(지역 요금·차단)
+#   MIMIC_EMAIL_API / MIMIC_EMAIL_API_KEY / MIMIC_EMAIL_FROM   ← 인증코드·알림 메일 발송 업체
+#   MIMIC_SMS_API / MIMIC_SMS_API_KEY / MIMIC_SMS_FROM         ← 문자 인증 발송 업체
+#   YTDLP_PATH=/opt/homebrew/bin/yt-dlp   ← SNS 링크 받기(A-04)
+#   GOOGLE_CLIENT_ID·SECRET / FACEBOOK_CLIENT_ID·SECRET / APPLE_* / TOSS_CLIENT_KEY·TOSS_SECRET_KEY / TELEGRAM_BOT_TOKEN
+npm run seed -- <관리자 이메일>   # 첫 관리자 계정
 npm start   # 기본 포트 4300
 ```
 
@@ -550,10 +557,11 @@ npm start   # 기본 포트 4300
 
 - 기획보고서 완성(Claude Docs, 비공개). 이 문서가 그 내용을 모두 포함하고 대체함
 - PikPak 조사 완료: 공개 페이지·FAQ·도움말·결제·로그인 화면, 무료 계정 웹 드라이브(QR 로그인), 플랫폼별 소개 페이지
-- 개발 착수: 프로젝트 폴더에 다음 파일만 작성됨(Windows 개발 PC)
-  - `package.json`(의존성: express, busboy, webtorrent, webdav-server, adm-zip, qrcode, grammy, @modelcontextprotocol/sdk, zod — 설치·로딩 확인 완료)
-  - `server/core/config.js`, `server/core/db.js`, `server/core/schema.sql`(10-4의 공통 테이블)
-- 다음 작업: 나머지 코어(auth·storage·files·plans·quota·notify), 서버 진입점, 웹 화면 틀 작성 → 모듈 10개 구현 → 통합 테스트 → 기능 76개 검수 → 맥미니 배포
+- **구현 완료(GitHub main)**: 코어 + 기능 모듈 9개(auth·drive·offline·media·share·vault·billing·integrations·admin-content) + 플랫폼(PWA·데스크톱·확장·CLI·텔레그램 봇). 기능 76개 중 **69개 완료, 7개 부분**(아래). 자동 테스트 236개 모두 통과. 독립 검수 2회(1차 126건·2차 70건 지적 → 수정)
+- **브라우저 실사용 점검(2026-11-13)**: 이메일 가입(인증코드) → My Pack 생성 → 업로드 → 영상 재생(자막 자동 연결) → 클라우드 다운로드(링크 → 내 드라이브, 남은 횟수 차감) → 공유 링크 열기 → 테스트 결제(프리미엄 즉시 적용·10TB) → 관리자 화면 8개 메뉴. 모두 정상
+- **부분 완료 7개**: A-04(yt-dlp 설치 필요), B-09(SD 카드는 안드로이드 앱 전용), C-02(HDR 은 기기 지원에 따름), I-05(추천 보상 Pro 조건 미확인), K-03(영어 본문 일부), K-05(휴대폰 앱 푸시는 앱 출시 후), K-09(설치 파일 빌드·서명 전). 사유는 `docs/features.json` 의 `note`
+- **운영 전 외부 준비물**: PG 계약·토스 키, 소셜 로그인 키, 문자·메일 발송 업체, 웹하드 등록 등 법무 검토, 맥미니·도메인·HTTPS, 저장 용량 결정(Q-5)
+- 다음 작업: 위 외부 준비물 → 맥미니 배포(11장) → 클로즈드 베타
 - **작업 관리**: GitHub 저장소 https://github.com/newcode135-prog/mimic 의 Issues. 기능 76개·결정 9개·작업 3개가 이슈로 등록되어 있고, 라벨(`P0~P2`, `area:*`, `module:*`, `feature/decision/task`, `needs-verification`)과 마일스톤(0 준비 ~ 3 완성)으로 분류됨. 원본 데이터는 `docs/features.json`, 재생성은 `node scripts/github-setup.mjs newcode135-prog/mimic`
 - **아직 확인 못 한 범위**: Android·iOS·Windows·macOS·TV 앱 내부 화면, 브라우저 확장 화면, 텔레그램 봇 명령, CLI 명령 전체, 프리미엄 전용 화면, 결제 이후 화면, 알림 메일 문구, 미리보기·공유 업데이트 세부 동작
 
