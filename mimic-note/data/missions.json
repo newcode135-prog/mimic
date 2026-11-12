@@ -1,5 +1,5 @@
 {
-  "nextId": 4,
+  "nextId": 9,
   "missions": [
     {
       "id": "M-0001",
@@ -32,6 +32,61 @@
       "status": "todo",
       "createdBy": "changmin",
       "createdAt": "2026-11-12T19:54:03.139Z",
+      "doneAt": null
+    },
+    {
+      "id": "M-0004",
+      "assignee": "changmin",
+      "order": 1,
+      "title": "맥미니 켜기",
+      "detail": "맥미니가 8시간째 오프라인이에요(Tailscale). 켜고 Claude Code 에 알려 주면 패시브 스킬 [자동 다운로드]를 설치해요(bash mimic-note/passive/install-macmini.sh).",
+      "status": "todo",
+      "createdBy": "changmin",
+      "createdAt": "2026-11-12T22:32:39.704Z",
+      "doneAt": null
+    },
+    {
+      "id": "M-0005",
+      "assignee": "changmin",
+      "order": 2,
+      "title": "텔레그램 봇 연결",
+      "detail": "@BotFather → /newbot 으로 토큰 받기 → 받을 사람이 봇에게 /start → 맥미니 저장소 폴더의 .env 에 TELEGRAM_BOT_TOKEN 과 TELEGRAM_CHAT_IDS 넣기(chat id 는 node mimic-note/checkin.mjs --chat-ids 로 확인). 토큰은 저장소·채팅에 붙여넣지 않기.",
+      "status": "todo",
+      "createdBy": "changmin",
+      "createdAt": "2026-11-12T22:32:39.729Z",
+      "doneAt": null
+    },
+    {
+      "id": "M-0006",
+      "assignee": "changmin",
+      "order": 3,
+      "title": "대전제 v0.2 검토",
+      "detail": "mimic-note/premise.md 13개 조항 확인. 특히 6조 보상 규칙, 새로 생긴 10~12조(자기 칸·패시브 스킬·두 개의 게임기).",
+      "status": "todo",
+      "createdBy": "changmin",
+      "createdAt": "2026-11-12T22:32:39.750Z",
+      "doneAt": null
+    },
+    {
+      "id": "M-0007",
+      "assignee": "changmin",
+      "order": 4,
+      "title": "'데이터'가 무엇인지 정하기",
+      "detail": "[데이터 라벨링]·[압축]·[업로드]의 데이터가 무엇인지(예: 녹취 파일, 이미지, 시트) 예시 하나. 정해지면 규칙 v2 로 충돌 기준을 정확하게 만들어요.",
+      "status": "todo",
+      "createdBy": "changmin",
+      "createdAt": "2026-11-12T22:32:39.770Z",
+      "doneAt": null
+    },
+    {
+      "id": "M-0008",
+      "assignee": "changmin",
+      "order": 5,
+      "title": "플레이어 미션 등록",
+      "detail": "루카스·유리·네이뜬에게 줄 첫 미션 정하기. 내용만 Claude Code 에 말하면 등록돼요.",
+      "status": "todo",
+      "createdBy": "changmin",
+      "createdAt": "2026-11-12T22:32:39.790Z",
       "doneAt": null
     }
   ]
