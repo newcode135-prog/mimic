@@ -1,0 +1,26 @@
+# 새 이슈가 열리면 예상 소요 시간을 자동으로 댓글로 단다(scripts/eta.mjs, docs/estimates.json 실측값)
+name: 예상 시간 안내
+on:
+  issues:
+    types: [opened]
+permissions:
+  contents: read
+  issues: write
+jobs:
+  eta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: 예상 시간 계산
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: node scripts/eta.mjs --from-env --markdown > eta.md
+      - name: 이슈에 댓글
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body-file eta.md

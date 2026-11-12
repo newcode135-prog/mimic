@@ -2,6 +2,7 @@
 // 사용법: node scripts/github-setup.mjs <owner/repo>   (gh CLI 로그인 필요)
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import { estimate } from './eta.mjs';
 
 const repo = process.argv[2];
 if (!repo) {
@@ -37,18 +38,31 @@ const milestoneTitle = Object.fromEntries(data.milestones.map((m) => [m.id, m.ti
 const milestoneFor = { P0: 'M1', P1: 'M2', P2: 'M3' };
 console.log(`마일스톤 ${data.milestones.length}개 준비`);
 
-const existing = new Set(JSON.parse(gh('issue', 'list', '--repo', repo, '--state', 'all', '--limit', '1000', '--json', 'title')).map((i) => i.title));
+// --sync: 이미 있는 기능 이슈의 본문도 최신 내용(예상 시간 포함)으로 고친다
+const sync = process.argv.includes('--sync');
+const existing = new Map(JSON.parse(gh('issue', 'list', '--repo', repo, '--state', 'all', '--limit', '1000', '--json', 'title,number')).map((i) => [i.title, i.number]));
 let created = 0;
-function issue(title, body, labelList, milestone) {
-  if (existing.has(title)) return;
+let updated = 0;
+function issue(title, body, labelList, milestone, { syncBody = false } = {}) {
+  if (existing.has(title)) {
+    if (sync && syncBody) {
+      gh('issue', 'edit', String(existing.get(title)), '--repo', repo, '--body', body);
+      updated++;
+      pause(1200);
+    }
+    return;
+  }
   gh('issue', 'create', '--repo', repo, '--title', title, '--body', body, '--label', labelList.join(','), '--milestone', milestone);
   created++;
   pause(1200);
 }
+const fmtMin = ({ lo, hi }) => (lo === hi ? `${lo}분` : `${lo}~${hi}분`);
 
 for (const f of data.features) {
   const body = [
     `**영역** ${f.area} ${data.areas[f.area]} · **모듈** \`${f.module}\` · **우선순위** ${f.priority} · **근거** ${f.verification}`,
+    '',
+    `**⏱ 예상 수정 시간** ${fmtMin(estimate(f))} — AI 에이전트 실측 기준(\`docs/estimates.json\`), 다시 계산: \`node scripts/eta.mjs ${f.id}\``,
     '',
     '### 구현 기준',
     f.rule,
@@ -63,7 +77,7 @@ for (const f of data.features) {
   ].join('\n');
   const l = ['feature', f.priority, `area:${f.area}`, `module:${f.module}`];
   if (f.verification === '미확인') l.push('needs-verification');
-  issue(`[${f.id}] ${f.title}`, body, l, milestoneTitle[milestoneFor[f.priority]]);
+  issue(`[${f.id}] ${f.title}`, body, l, milestoneTitle[milestoneFor[f.priority]], { syncBody: true });
 }
 for (const d of data.decisions) {
   issue(`[결정 ${d.id}] ${d.title}`, `${d.detail}\n\n결정되면 이 이슈에 결과를 남기고 \`docs/MIMIC_PLAN.md\` 2장(확정)으로 옮긴다.`, ['decision'], milestoneTitle.M0);
@@ -71,4 +85,4 @@ for (const d of data.decisions) {
 for (const t of data.tasks) {
   issue(`[${t.id}] ${t.title}`, t.detail, ['task', `module:${t.module}`], milestoneTitle[t.milestone]);
 }
-console.log(`이슈 ${created}개 새로 생성`);
+console.log(`이슈 ${created}개 새로 생성${sync ? `, ${updated}개 본문 갱신` : ''}`);
