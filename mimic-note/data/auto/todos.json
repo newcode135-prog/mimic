@@ -1,0 +1,30 @@
+{
+  "rulesVersion": "rules-v1",
+  "generatedAt": "2026-11-12T22:32:04.752Z",
+  "players": {
+    "changmin": {
+      "important": [],
+      "todos": []
+    },
+    "minho": {
+      "important": [],
+      "todos": [
+        "[미션 M-0001] 텔레그램 봇 만들기",
+        "[미션 M-0002] 봇에게 /start 보내기",
+        "[미션 M-0003] 토큰·chat id 전달하고 비밀값 등록"
+      ]
+    },
+    "yuri": {
+      "important": [],
+      "todos": []
+    },
+    "nathan": {
+      "important": [],
+      "todos": []
+    },
+    "lucas": {
+      "important": [],
+      "todos": []
+    }
+  }
+}
