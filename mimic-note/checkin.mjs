@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// 미믹노트 체크인: 미션 데이터베이스(data/missions.json)에서 그 팀원의 남은 미션을 꺼내 Claude Code 가 전달한다.
+// 미믹노트 체크인: ① 대전제(premise.md)를 먼저 보여 주고 ② 미션 데이터베이스(data/missions.json)에서
+// 그 팀원의 남은 미션을 꺼내 Claude Code 가 전달한다.
 // Node 18 이상, npm install 필요 없음.
 //
 //   node mimic-note/checkin.mjs 민호              남은 미션 출력 (Claude Code 가 그대로 전달)
@@ -14,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { NOTE_DIR, loadMembers, findMember, loadDb, openMissions, doneMissions, formatMissions } from './lib.mjs';
+import { NOTE_DIR, loadMembers, findMember, loadDb, openMissions, doneMissions, formatMissions, loadPremise } from './lib.mjs';
 
 export { loadMembers, findMember } from './lib.mjs';
 
@@ -24,6 +25,22 @@ const WORKFLOW = 'mimic-checkin.yml';
 
 export function buildMessage(member, db = loadDb()) {
   return formatMissions(member, openMissions(db, member.id));
+}
+
+// 체크인 화면 전체: 대전제 → 미션 순서.
+export function checkinText(member, db = loadDb(), premise = loadPremise()) {
+  const open = openMissions(db, member.id);
+  const lines = [
+    '━━━━━━━━ ① 대전제 (모든 플레이어·관리자·AI 가 먼저 따르는 규칙) ━━━━━━━━',
+    premise,
+    '',
+    `━━━━━━━━ ② ${member.name}(${member.id}) 체크인 — 남은 미션 ${open.length}개 · 완료 ${doneMissions(db, member.id).length}개 ━━━━━━━━`,
+    '',
+    formatMissions(member, open),
+  ];
+  if (open.length) lines.push('', `미션을 끝내면: node mimic-note/mission.mjs done ${member.id} <번호>  (그 뒤 git commit·push)`);
+  else lines.push('', '미션은 관리자(창민·민호)가 등록합니다. 등록되면 같은 암호구로 다시 체크인하세요.');
+  return lines.join('\n');
 }
 
 function readDotEnv() {
@@ -114,15 +131,11 @@ async function main(argv) {
   }
 
   const db = loadDb();
-  const open = openMissions(db, member.id);
-  const message = formatMissions(member, open);
-  console.log(`[미믹노트] ${member.name}(${member.id}) 체크인 — 남은 미션 ${open.length}개 · 완료 ${doneMissions(db, member.id).length}개\n`);
-  console.log(message);
-  if (open.length) console.log(`\n미션을 끝내면: node mimic-note/mission.mjs done ${member.id} <번호>  (그 뒤 git commit·push)`);
+  console.log(checkinText(member, db));
 
   if (!flags.has('--telegram')) return 0;
   console.log('');
-  return sendTelegram(member, message, env, flags);
+  return sendTelegram(member, buildMessage(member, db), env, flags);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

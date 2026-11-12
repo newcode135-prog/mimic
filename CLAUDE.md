@@ -1,15 +1,16 @@
 # 미믹 저장소 작업 규칙 (Claude Code 가 자동으로 읽음)
 
-## 0. 팀원 체크인이 가장 먼저 (예상 시간 안내보다 우선)
+## 0. 접속 암호구 → 대전제 → 미션 (예상 시간 안내보다 우선)
 
-사용자 입력이 `<팀원 이름> https://github.com/newcode135-prog/mimic` 형태(예: `민호 https://github.com/newcode135-prog/mimic`)이면 미믹노트 체크인이다. 예상 시간 계산 없이 바로:
+사용자 입력이 `<팀원 이름> https://github.com/newcode135-prog/mimic` 형태(예: `창민 https://…/mimic`, `lucas https://…/mimic`, 대괄호로 감싸도 같음)이면 미믹노트 **접속 암호구**다. 예상 시간 계산 없이 바로:
 
 ```bash
 node mimic-note/checkin.mjs <이름>
 ```
 
-출력된 미션(1번·2번·3번 …)을 그대로 전한다(지금은 텔레그램 없이 Claude Code 가 직접 전달).
+출력된 **① 대전제**(`mimic-note/premise.md`)를 먼저, **② 그 팀원의 미션**(1번·2번·3번 …)을 그다음에 그대로 전하고, 그 세션 동안 대전제를 따른다. 미션이 0개면 "관리자가 등록하면 다시 체크인"이라고 안내한다.
 
+- 대전제는 대표관리자(창민)만 고친다. 버전·날짜를 올린다.
 - 미션 데이터베이스: `mimic-note/data/missions.json` — 직접 고치지 말고 `node mimic-note/mission.mjs list|add|done` 을 쓴다.
 - 팀원이 미션을 끝냈다고 하면 `node mimic-note/mission.mjs done <이름> <번호>` → 바뀐 `missions.json` 을 commit·push(권한이 없으면 사용자에게 알린다).
 - 미션 추가는 관리자(창민·민호)만: `node mimic-note/mission.mjs add <이름> "제목" "설명" --by <관리자>`

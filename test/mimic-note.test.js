@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { NOTE_DIR, loadMembers, findMember, loadDb, saveDb, openMissions, addMission, completeMission, formatMissions } from '../mimic-note/lib.mjs';
-import { buildMessage, chatIdFor } from '../mimic-note/checkin.mjs';
+import { buildMessage, chatIdFor, checkinText } from '../mimic-note/checkin.mjs';
+import { loadPremise } from '../mimic-note/lib.mjs';
 import { run } from '../mimic-note/mission.mjs';
 
 const members = loadMembers();
@@ -25,7 +26,9 @@ test('관리자 구성: 창민 대표관리자, 민호 관리자', () => {
 });
 
 test('이름·아이디·님 붙인 이름 모두 같은 팀원', () => {
-  for (const v of ['민호', 'minho', 'Minho', ' 민호님 ']) assert.equal(findMember(v, members).id, 'minho');
+  for (const v of ['민호', 'minho', 'Minho', ' 민호님 ', '[민호', '[minho]']) assert.equal(findMember(v, members).id, 'minho');
+  for (const v of ['lucas', 'Lucas', '[lucas', '루카스', '[루카스]']) assert.equal(findMember(v, members).id, 'lucas');
+  assert.equal(findMember('창민', members).id, 'changmin');
   assert.equal(findMember('없는사람', members), null);
   assert.equal(findMember('', members), null);
 });
@@ -84,4 +87,17 @@ test('chat id 는 개별 변수 또는 JSON 비밀값에서 읽는다', () => {
   assert.equal(chatIdFor('minho', { TELEGRAM_CHAT_IDS: '{"minho":"2"}' }), '2');
   assert.equal(chatIdFor('minho', { TELEGRAM_CHAT_IDS: 'not json' }), null);
   assert.equal(chatIdFor('minho', {}), null);
+});
+
+test('체크인: 대전제가 먼저, 미션이 그다음', () => {
+  const premise = loadPremise();
+  assert.match(premise, /^# 대전제 v\d+\.\d+/);
+  const minho = checkinText(findMember('민호', members));
+  const p = minho.indexOf('대전제 v');
+  const m = minho.indexOf('민호님의 미션 1번');
+  assert.ok(p !== -1 && m !== -1 && p < m, '대전제가 미션보다 먼저 나와야 한다');
+  const lucas = checkinText(findMember('lucas', members), { nextId: 1, missions: [] });
+  assert.match(lucas, /대전제 v/);
+  assert.match(lucas, /루카스님, 지금 남은 미션이 없습니다/);
+  assert.match(lucas, /관리자\(창민·민호\)가 등록/);
 });

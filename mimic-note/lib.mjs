@@ -11,9 +11,9 @@ export function loadMembers(dir = NOTE_DIR) {
   return JSON.parse(fs.readFileSync(path.join(dir, 'data', 'members.json'), 'utf8')).members;
 }
 
-// '민호', 'minho', 'Minho', '민호님' 모두 같은 사람으로 찾는다.
+// '민호', 'minho', 'Minho', '민호님', '[민호' 모두 같은 사람으로 찾는다.
 export function findMember(input, members) {
-  const key = String(input || '').trim().replace(/님$/, '').toLowerCase();
+  const key = String(input || '').trim().replace(/^\[+|\]+$/g, '').trim().replace(/님$/, '').toLowerCase();
   if (!key) return null;
   return members.find((m) => m.id === key || m.name === key || (m.github && m.github.toLowerCase() === key)) || null;
 }
@@ -22,6 +22,12 @@ export function requireMember(input, members) {
   const m = findMember(input, members);
   if (!m) throw new Error(`팀원을 찾지 못했습니다: "${input || ''}". 가능한 이름: ${members.map((x) => `${x.name}(${x.id})`).join(', ')}`);
   return m;
+}
+
+// ---- 대전제: 모든 체크인에서 가장 먼저 보여 주는 규칙 ----
+
+export function loadPremise(dir = NOTE_DIR) {
+  return fs.readFileSync(path.join(dir, 'premise.md'), 'utf8').trim();
 }
 
 // ---- 미션 데이터베이스 ----
