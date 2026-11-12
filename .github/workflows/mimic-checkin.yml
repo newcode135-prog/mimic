@@ -1,0 +1,28 @@
+# 미믹노트 체크인: 팀원의 투두리스트를 그 팀원의 텔레그램으로 보낸다.
+# 실행: gh workflow run mimic-checkin.yml -R newcode135-prog/mimic -f member=minho
+# 필요한 저장소 비밀값(Settings → Secrets and variables → Actions):
+#   TELEGRAM_BOT_TOKEN  BotFather 에서 받은 봇 토큰
+#   TELEGRAM_CHAT_IDS   {"minho":"123456789", ...} 형식의 JSON
+name: 미믹노트 체크인
+on:
+  workflow_dispatch:
+    inputs:
+      member:
+        description: 팀원 아이디 또는 이름 (예 minho, 민호)
+        required: true
+permissions:
+  contents: read
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: 투두리스트 텔레그램 발송
+        env:
+          MEMBER: ${{ inputs.member }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+        run: node mimic-note/checkin.mjs "$MEMBER" --no-dispatch
