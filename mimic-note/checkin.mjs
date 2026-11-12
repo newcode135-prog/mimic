@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { NOTE_DIR, loadMembers, findMember, loadDb, openMissions, doneMissions, formatMissions, loadPremise } from './lib.mjs';
+import { NOTE_DIR, loadMembers, findMember, loadDb, openMissions, doneMissions, formatMissions, loadPremise, readEnv, chatIdFor, telegramApi } from './lib.mjs';
 
 export { loadMembers, findMember } from './lib.mjs';
 
@@ -28,7 +28,7 @@ export function buildMessage(member, db = loadDb()) {
 }
 
 // 체크인 화면 전체: 대전제 → 미션 순서.
-export function checkinText(member, db = loadDb(), premise = loadPremise()) {
+export function checkinText(member, db = loadDb(), premise = loadPremise(), auto = loadAuto()) {
   const open = openMissions(db, member.id);
   const lines = [
     '━━━━━━━━ ① 대전제 (모든 플레이어·관리자·AI 가 먼저 따르는 규칙) ━━━━━━━━',
@@ -40,39 +40,25 @@ export function checkinText(member, db = loadDb(), premise = loadPremise()) {
   ];
   if (open.length) lines.push('', `미션을 끝내면: node mimic-note/mission.mjs done ${member.id} <번호>  (그 뒤 git commit·push)`);
   else lines.push('', '미션은 관리자(창민·민호)가 등록합니다. 등록되면 같은 암호구로 다시 체크인하세요.');
+  const mine = auto?.players?.[member.id];
+  lines.push('', `━━━━━━━━ ③ 패시브 스킬 [자동 다운로드] — 모두의 기록을 모은 투두${auto?.generatedAt ? ` (${auto.generatedAt.slice(0, 16).replace('T', ' ')} UTC 계산)` : ''} ━━━━━━━━`, '');
+  if (!mine) lines.push('아직 계산된 결과가 없습니다(타이머가 돌기 시작하면 10분마다 갱신).');
+  else {
+    if (mine.important.length) { lines.push('⚡ 더 중요한 일'); mine.important.forEach((x) => lines.push(`• ${x}`)); lines.push(''); }
+    if (mine.todos.length) mine.todos.forEach((x, i) => lines.push(`${i + 1}. ${x}`));
+    else lines.push('남은 투두가 없습니다.');
+  }
+  lines.push('', `작업을 기록하려면: node mimic-note/work.mjs ${member.id} <라벨링|압축|업로드> <대상> <시작|완료>  (그 뒤 git commit·push)`);
   return lines.join('\n');
 }
 
-function readDotEnv() {
-  const file = path.join(ROOT, '.env');
-  if (!fs.existsSync(file)) return {};
-  const out = {};
-  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
-    if (m) out[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
-  }
-  return out;
+export function loadAuto(dir = NOTE_DIR) {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, 'data', 'auto', 'todos.json'), 'utf8')); } catch { return null; }
 }
 
-export function chatIdFor(memberId, env) {
-  const direct = env[`TELEGRAM_CHAT_ID_${memberId.toUpperCase()}`];
-  if (direct) return direct;
-  if (env.TELEGRAM_CHAT_IDS) {
-    try { return JSON.parse(env.TELEGRAM_CHAT_IDS)[memberId] || null; } catch { return null; }
-  }
-  return null;
-}
-
-async function telegram(token, method, body) {
-  const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body || {}),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!json.ok) throw new Error(`텔레그램 ${method} 실패: ${json.description || res.status}`);
-  return json.result;
-}
+const readDotEnv = () => readEnv(ROOT, {});
+const telegram = telegramApi;
+export { chatIdFor };
 
 function dispatchViaActions(memberId) {
   try {

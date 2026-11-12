@@ -24,6 +24,41 @@ export function requireMember(input, members) {
   return m;
 }
 
+// ---- 환경변수(.env)와 텔레그램 ----
+
+// 저장소 루트의 .env(git 에 안 올라감) + 실제 환경변수. 환경변수가 우선.
+export function readEnv(rootDir = path.resolve(NOTE_DIR, '..'), env = process.env) {
+  const out = {};
+  const file = path.join(rootDir, '.env');
+  if (fs.existsSync(file)) {
+    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
+      if (m) out[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
+    }
+  }
+  return { ...out, ...env };
+}
+
+export function chatIdFor(memberId, env) {
+  const direct = env[`TELEGRAM_CHAT_ID_${memberId.toUpperCase()}`];
+  if (direct) return direct;
+  if (env.TELEGRAM_CHAT_IDS) {
+    try { return JSON.parse(env.TELEGRAM_CHAT_IDS)[memberId] || null; } catch { return null; }
+  }
+  return null;
+}
+
+export async function telegramApi(token, method, body) {
+  const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!json.ok) throw new Error(`텔레그램 ${method} 실패: ${json.description || res.status}`);
+  return json.result;
+}
+
 // ---- 대전제: 모든 체크인에서 가장 먼저 보여 주는 규칙 ----
 
 export function loadPremise(dir = NOTE_DIR) {

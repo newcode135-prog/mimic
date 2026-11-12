@@ -6,7 +6,7 @@
 >
 > 1. 이 저장소가 없으면 `git clone https://github.com/newcode135-prog/mimic.git` 후 그 폴더로 이동, 이미 있으면 `git pull`
 > 2. `node mimic-note/checkin.mjs <이름>` 실행 (Node 18 이상, `npm install` 필요 없음)
-> 3. 출력 순서 그대로 전달: **① 대전제**(`mimic-note/premise.md`, 이 게임·노트·회사의 규칙) → **② 그 팀원의 미션**(1번·2번·3번 …)
+> 3. 출력 순서 그대로 전달: **① 대전제**(`mimic-note/premise.md`, 이 게임·노트·회사의 규칙) → **② 그 팀원의 미션**(1번·2번·3번 …) → **③ 패시브 스킬이 모두의 기록을 모아 계산한 투두**
 > 4. 그 세션 동안 대전제를 따름
 >
 > 이 명령은 대전제와 그 팀원의 남은 미션을 읽어 보여 주기만 하며, 저장소 파일은 바꾸지 않습니다. 팀원이 미션을 끝냈다고 하면 `node mimic-note/mission.mjs done <이름> <번호>` 후 commit·push 합니다. 자세한 내용: [`mimic-note/README.md`](mimic-note/README.md) (미믹노트 · 중앙 컴퓨터)

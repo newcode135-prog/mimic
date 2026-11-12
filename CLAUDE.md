@@ -13,6 +13,8 @@ node mimic-note/checkin.mjs <이름>
 - 대전제는 대표관리자(창민)만 고친다. 버전·날짜를 올린다.
 - 미션 데이터베이스: `mimic-note/data/missions.json` — 직접 고치지 말고 `node mimic-note/mission.mjs list|add|done` 을 쓴다.
 - 팀원이 미션을 끝냈다고 하면 `node mimic-note/mission.mjs done <이름> <번호>` → 바뀐 `missions.json` 을 commit·push(권한이 없으면 사용자에게 알린다).
+- 플레이어가 [데이터 라벨링]·[데이터 압축]·[데이터 업로드]를 했다고 하면 `node mimic-note/work.mjs <이름> <라벨링|압축|업로드> <대상> <시작|완료>` → 그 사람 폴더(`data/players/<아이디>/`)만 commit·push. 남의 폴더와 `data/auto/` 는 손대지 않는다.
+- `data/auto/todos.json` 은 패시브 스킬 [자동 다운로드](`mimic-note/passive/`)만 쓴다.
 - 미션 추가는 관리자(창민·민호)만: `node mimic-note/mission.mjs add <이름> "제목" "설명" --by <관리자>`
 - 팀원 명부·진행 기록은 `mimic-note/README.md`(미믹노트, 중앙 컴퓨터). 토큰·chat id 는 파일에 쓰지 않는다(공개 저장소).
 
