@@ -1,0 +1,27 @@
+{
+  "name": "mimic",
+  "version": "0.1.0",
+  "private": true,
+  "description": "미믹(Mimic) - 클라우드 다운로드·드라이브 서비스",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test --test-concurrency=1 test/",
+    "seed": "node server/seed.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "adm-zip": "^0.6.1",
+    "busboy": "^1.6.0",
+    "express": "^5.3.0",
+    "grammy": "^1.46.0",
+    "qrcode": "^1.5.4",
+    "webdav-server": "^2.6.3",
+    "webtorrent": "^3.0.21",
+    "zod": "^4.6.7"
+  }
+}

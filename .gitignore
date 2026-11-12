@@ -1,0 +1,7 @@
+node_modules/
+.mimic-test-*/
+desktop/node_modules/
+desktop/dist/
+cli/node_modules/
+*.log
+.env

@@ -1,0 +1,150 @@
+{
+  "_about": "미믹 기능·결정·작업 라벨 데이터. docs/MIMIC_PLAN.md 6장·3장과 같은 내용을 기계가 읽을 수 있게 정리한 것. scripts/github-setup.mjs 가 이 파일로 GitHub 라벨·마일스톤·이슈를 만든다.",
+  "updated": "2026-11-13",
+  "labels": {
+    "status": ["todo", "in-progress", "done"],
+    "verification": {
+      "공식": "PikPak 공식 사이트·FAQ·도움말에서 확인",
+      "로그인 확인": "PikPak 무료 계정 웹 화면에서 직접 확인",
+      "앱 소개": "PikPak 플랫폼별 소개 페이지에서 확인",
+      "미확인": "PikPak 세부 동작을 아직 확인하지 못함"
+    }
+  },
+  "areas": {
+    "A": "클라우드 다운로드",
+    "B": "드라이브",
+    "C": "재생·미리보기",
+    "D": "공유",
+    "E": "금고",
+    "F": "전송 쿼터",
+    "G": "연동·개발자",
+    "H": "회원·계정",
+    "I": "결제·혜택",
+    "J": "안전·법무",
+    "K": "운영·공통"
+  },
+  "modules": {
+    "core": "공통 뼈대(DB·인증 미들웨어·저장소·플랜·쿼터·알림·서버 진입점·웹 화면 틀)",
+    "auth": "로그인 6종, QR·CLI 기기 인가, 계정 및 보안, 휴면·탈퇴",
+    "drive": "파일 관리, 업로드·다운로드, 휴지통, 검색·정렬, 온보딩",
+    "offline": "클라우드 다운로드 엔진(토렌트·HTTP·SNS), 전송 패널",
+    "media": "영상 변환·재생, 자막·트랙, 미리보기, 압축 해제",
+    "share": "공유 링크·코드, 받는 사람 화면",
+    "vault": "종단간 암호화 금고",
+    "billing": "플랜·결제·구독·쿠폰·초대·출석, 쿼터, 만료 처리",
+    "integrations": "WebDAV, 토큰·연결 앱, CLI, MCP, 텔레그램 봇, 브라우저 확장, 환경설정 화면",
+    "admin-content": "관리자, 정책·도움말·FAQ·소개 페이지, 알림, 다국어",
+    "platforms": "Windows·macOS(Electron), 모바일 설치형 웹앱(PWA), TV",
+    "server-ops": "맥미니 서버 구축·배포·백업"
+  },
+  "milestones": [
+    { "id": "M0", "title": "0 준비", "description": "개발 환경, 공통 뼈대, 디자인 시스템, 법무 질의, 도메인·PG 신청" },
+    { "id": "M1", "title": "1 MVP (P0 28개)", "description": "웹 + 모바일 설치형 웹앱, 관리자, 맥미니 배포, 클로즈드 베타" },
+    { "id": "M2", "title": "2 확장 (P1 36개)", "description": "데스크톱 앱, 확장, 텔레그램 봇, 금고, WebDAV 등. 정식 출시" },
+    { "id": "M3", "title": "3 완성 (P2 12개)", "description": "TV, CLI·MCP·토큰, HDR, 추천 보상 Pro, 출석 체크 등. 76개 전체 검수" }
+  ],
+  "features": [
+    { "id": "A-01", "area": "A", "module": "offline", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "마그넷 링크 저장", "rule": "\"클라우드 다운로드 작업 생성\" 창에 붙여넣기, 줄바꿈으로 여러 개 한 번에, 저장 폴더 지정" },
+    { "id": "A-02", "area": "A", "module": "offline", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "토렌트 파일 저장", "rule": ".torrent 파일 선택. BT 작업당 최대 7,000개 파일, 개별 파일 선택 불가" },
+    { "id": "A-03", "area": "A", "module": "offline", "priority": "P0", "verification": "공식", "status": "todo", "title": "URL 직접 링크 저장", "rule": "HTTP(S) 파일 링크를 서버가 받음" },
+    { "id": "A-04", "area": "A", "module": "offline", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "SNS 게시물 미디어 저장", "rule": "YouTube·X(트위터)·TikTok·Facebook 공유 링크에서 미디어 추출(yt-dlp)" },
+    { "id": "A-05", "area": "A", "module": "offline", "priority": "P0", "verification": "공식", "status": "todo", "title": "백그라운드 서버 다운로드", "rule": "사용자 기기가 꺼져 있어도 서버에서 계속 진행" },
+    { "id": "A-06", "area": "A", "module": "offline", "priority": "P0", "verification": "공식", "status": "todo", "title": "즉시 완료(중복 제거)", "rule": "같은 파일(해시·infohash)이 서버에 있으면 받지 않고 즉시 사용자 드라이브에 연결" },
+    { "id": "A-07", "area": "A", "module": "offline", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "전송 작업 패널", "rule": "오른쪽 아래 패널, 탭 3개(클라우드 다운로드·업로드·다운로드), 진행률·상태·실패 사유, 남은 무료 횟수 + \"횟수 추가\" 버튼" },
+    { "id": "A-08", "area": "A", "module": "offline", "priority": "P0", "verification": "공식", "status": "todo", "title": "차단 링크 처리", "rule": "관리자가 등록한 URL·infohash·파일 해시는 저장 거부, 앱 안에서 이의제기" },
+    { "id": "A-09", "area": "A", "module": "offline", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "BT 스마트 필터", "rule": "광고로 식별된 하위 파일은 저장하지 않음, 설정에서 끄기 가능" },
+
+    { "id": "B-01", "area": "B", "module": "drive", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "파일 메뉴", "rule": "공유, 열기, 외부 플레이어로 열기, 즐겨찾기, 상세 정보, 기기에 다운로드, 이동, 복사, 이름 바꾸기, 삭제 + 로컬 업로드·새 폴더" },
+    { "id": "B-02", "area": "B", "module": "drive", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "휴지통", "rule": "최대 15일 보관 후 자동 영구삭제, 휴지통에서 지워야 용량 반환, 복원" },
+    { "id": "B-03", "area": "B", "module": "drive", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "저장 용량 표시", "rule": "사이드바 하단 사용량/총량(무료 6GB)" },
+    { "id": "B-04", "area": "B", "module": "drive", "priority": "P1", "verification": "공식", "status": "todo", "title": "상세 정보·리소스 링크", "rule": "상세 보기에서 다운로드 링크(서명된 임시 URL) 내보내기" },
+    { "id": "B-05", "area": "B", "module": "drive", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "검색·정렬·보기 전환", "rule": "검색(Ctrl+F), 정렬 8종(가나다·역순·최신·오래된·큰·작은·폴더 우선·정렬 기억), 목록/격자 전환" },
+    { "id": "B-06", "area": "B", "module": "drive", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "업로드", "rule": "동시 업로드 최대 3개, 실패 시 자동 재시도, 월 업로드 쿼터 차감" },
+    { "id": "B-07", "area": "B", "module": "drive", "priority": "P0", "verification": "공식", "status": "todo", "title": "기기로 다운로드", "rule": "다운스트림 쿼터 차감, 이어받기(Range)" },
+    { "id": "B-08", "area": "B", "module": "media", "priority": "P1", "verification": "공식", "status": "todo", "title": "온라인 압축 해제", "rule": "클라우드 안에서 zip 등 해제, 프리미엄 전용" },
+    { "id": "B-09", "area": "B", "module": "drive", "priority": "P2", "verification": "공식", "status": "todo", "title": "SD카드 저장", "rule": "Android 11 이상 앱에서 SD카드에 저장" },
+    { "id": "B-10", "area": "B", "module": "drive", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "최근 저장됨", "rule": "최근 저장한 파일 모아보기" },
+    { "id": "B-11", "area": "B", "module": "drive", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "즐겨찾기", "rule": "파일 즐겨찾기 추가·모아보기" },
+    { "id": "B-12", "area": "B", "module": "drive", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "다중 선택·단축키", "rule": "선택 시 하단 도구 모음, 키보드 단축키(예: 공유 Shift+S)" },
+
+    { "id": "C-01", "area": "C", "module": "media", "priority": "P0", "verification": "공식", "status": "todo", "title": "온라인 영상 재생", "rule": "무료 720p, 프리미엄 원본 화질(ffmpeg HLS 변환)" },
+    { "id": "C-02", "area": "C", "module": "media", "priority": "P2", "verification": "공식", "status": "todo", "title": "HDR 재생", "rule": "모바일 앱에서 지원, PC 웹 미지원" },
+    { "id": "C-03", "area": "C", "module": "media", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "외부 플레이어로 재생", "rule": "미믹 데스크톱·PotPlayer·VLC 등 선택(외부 플레이어용 임시 URL)" },
+    { "id": "C-04", "area": "C", "module": "media", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "플레이어 기능", "rule": "화질 선택, 배속 0.5·1.0·1.25·1.5·2.0·3.0배, 이전/다음 파일, 플레이어 안 공유·즐겨찾기, 이어보기" },
+    { "id": "C-05", "area": "C", "module": "media", "priority": "P1", "verification": "미확인", "status": "todo", "title": "이미지·문서·음악 미리보기", "rule": "이미지·PDF·텍스트·오디오 뷰어" },
+    { "id": "C-06", "area": "C", "module": "media", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "시청 기록", "rule": "재생한 영상 목록과 마지막 위치" },
+    { "id": "C-07", "area": "C", "module": "media", "priority": "P1", "verification": "앱 소개", "status": "todo", "title": "자막·오디오 트랙 전환", "rule": "내장/외부 자막(srt·vtt) 선택, 오디오 트랙 선택" },
+
+    { "id": "D-01", "area": "D", "module": "share", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "공유 링크 생성", "rule": "파일·폴더 공유, \"나의 공유\"에서 목록·취소" },
+    { "id": "D-02", "area": "D", "module": "share", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "공유 코드", "rule": "숫자·문자·기호 짧은 코드로 공유 찾기. 설정에서 \"바로 표시 / 경고 먼저\" 선택" },
+    { "id": "D-03", "area": "D", "module": "share", "priority": "P2", "verification": "공식", "status": "todo", "title": "공유 기본 보기 설정", "rule": "받는 사람이 처음 보는 보기 방식(목록/격자) 지정" },
+    { "id": "D-04", "area": "D", "module": "share", "priority": "P1", "verification": "미확인", "status": "todo", "title": "공유 업데이트", "rule": "공유한 폴더에 파일이 추가되면 받는 사람 화면에 반영" },
+    { "id": "D-05", "area": "D", "module": "share", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "공유 옵션", "rule": "만료일 영구·7일·14일·30일, 비밀번호 켜기(끄면 링크를 아는 누구나 접근). 받는 사람은 보기·재생·내 드라이브로 저장" },
+
+    { "id": "E-01", "area": "E", "module": "vault", "priority": "P1", "verification": "공식", "status": "todo", "title": "금고 종단간 암호화", "rule": "기기에서 AES-GCM 암호화 후 업로드, 운영자 열람 불가, 프리미엄 전용" },
+    { "id": "E-02", "area": "E", "module": "vault", "priority": "P1", "verification": "공식", "status": "todo", "title": "금고 잠금 해제", "rule": "전용 패스코드 + 생체인증(선택), 접근할 때마다 재인증" },
+    { "id": "E-03", "area": "E", "module": "vault", "priority": "P1", "verification": "공식", "status": "todo", "title": "금고 자동 잠금", "rule": "앱 종료·백그라운드·일정 시간 미사용 시 잠금, 수동 잠금" },
+    { "id": "E-04", "area": "E", "module": "vault", "priority": "P1", "verification": "미확인", "status": "todo", "title": "금고 별도 용량", "rule": "일반 드라이브와 분리된 용량(수치 미확인, 웹엔 금고 메뉴 없음)" },
+    { "id": "E-05", "area": "E", "module": "vault", "priority": "P2", "verification": "공식", "status": "todo", "title": "금고 암호화 공유", "rule": "공유마다 Share Key, 링크와 키 분리/결합 모드, 만료일" },
+
+    { "id": "F-01", "area": "F", "module": "billing", "priority": "P0", "verification": "공식", "status": "todo", "title": "월 기본 전송 쿼터", "rule": "클라우드 다운로드 40TB, 다운스트림 4TB, 업로드 1TB / 월. 매월 초기화, 이월 없음" },
+    { "id": "F-02", "area": "F", "module": "billing", "priority": "P0", "verification": "공식", "status": "todo", "title": "무료 일일 한도", "rule": "다운스트림 20GB/일, 클라우드 다운로드 하루 3회, KST 0시 초기화" },
+    { "id": "F-03", "area": "F", "module": "billing", "priority": "P1", "verification": "공식", "status": "todo", "title": "추가 쿼터 구매", "rule": "1개월권(구매한 달에만), 1년권(12개월간 매월 지급)" },
+    { "id": "F-04", "area": "F", "module": "billing", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "쿼터 상세", "rule": "설정 > 전송 > 쿼터에서 항목별 사용량" },
+    { "id": "F-05", "area": "F", "module": "billing", "priority": "P1", "verification": "공식", "status": "todo", "title": "연결 앱 쿼터 상한", "rule": "외부 앱 합산 각 쿼터의 25%, 초과 시 약 100KB/s 감속·업로드 차단·새 클라우드 다운로드 차단, 무료 하루 5GB" },
+
+    { "id": "G-01", "area": "G", "module": "integrations", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "WebDAV", "rule": "프리미엄 전용, 설정에서 켜기, 영구삭제·휴지통 비우기 불가" },
+    { "id": "G-02", "area": "G", "module": "integrations", "priority": "P2", "verification": "앱 소개", "status": "todo", "title": "CLI", "rule": "브라우저 인가 로그인, 토큰 무인 운영, 설치 스크립트·Windows·Homebrew·npx, 다운로드·업로드·스트리밍·공유" },
+    { "id": "G-03", "area": "G", "module": "integrations", "priority": "P2", "verification": "로그인 확인", "status": "todo", "title": "MCP(AI 도구 연결)", "rule": "AI 도구가 드라이브를 다룸, 설정에서 연결·취소" },
+    { "id": "G-04", "area": "G", "module": "integrations", "priority": "P2", "verification": "로그인 확인", "status": "todo", "title": "개인 액세스 토큰", "rule": "만료 30일~1년(기본 90일, 무기한 없음), 1회만 표시, 생성 시 이메일 알림, 영구삭제·초대 권한 불가" },
+    { "id": "G-05", "area": "G", "module": "integrations", "priority": "P1", "verification": "공식", "status": "todo", "title": "연결 앱 권한 6단계", "rule": "읽기 / 읽기·쓰기 / 관리 / 영구삭제(기본 미부여) / 서비스 / 계정" },
+    { "id": "G-06", "area": "G", "module": "integrations", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "연결 앱 관리", "rule": "연결 목록, 제거·취소 즉시 반영" },
+    { "id": "G-07", "area": "G", "module": "integrations", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "텔레그램 봇", "rule": "계정 연동 후 포워딩 저장, 전용 폴더 자동 분류, /settings 로 연동 해제" },
+    { "id": "G-08", "area": "G", "module": "integrations", "priority": "P1", "verification": "앱 소개", "status": "todo", "title": "브라우저 확장", "rule": "페이지 내 다운로드 링크·미디어 원클릭 저장, Chrome·Edge + 오프라인 설치 파일" },
+    { "id": "G-09", "area": "G", "module": "integrations", "priority": "P2", "verification": "앱 소개", "status": "todo", "title": "AI 에이전트 스킬", "rule": "CLI 스킬 설치 명령으로 AI 에이전트가 드라이브를 다룸" },
+
+    { "id": "H-01", "area": "H", "module": "auth", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "회원가입·로그인", "rule": "6가지 방식(Google·Facebook·Apple·휴대폰 인증·이메일·QR), 플랜 문서 7장" },
+    { "id": "H-02", "area": "H", "module": "auth", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "계정 및 보안", "rule": "프로필, 비밀번호, 휴대폰·이메일 연동, Facebook 연결, 연결된 앱, 탈퇴(7일 내 재로그인 시 복구)" },
+    { "id": "H-03", "area": "H", "module": "auth", "priority": "P1", "verification": "공식", "status": "todo", "title": "휴면 계정 정리", "rule": "무료 12개월 미로그인 → 알림 + 7일 유예, 3년 이상 + 연락처 무효면 즉시 삭제 가능" },
+    { "id": "H-04", "area": "H", "module": "auth", "priority": "P1", "verification": "공식", "status": "todo", "title": "계정 공유 탐지", "rule": "감지 시 24시간 정지" },
+    { "id": "H-05", "area": "H", "module": "auth", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "피드백", "rule": "계정 메뉴에서 의견 보내기" },
+
+    { "id": "I-01", "area": "I", "module": "billing", "priority": "P0", "verification": "로그인 확인", "status": "todo", "title": "프리미엄 구독", "rule": "상품 4종(월·연 구독, 1개월·1년권), 자동 갱신, 구독 관리·구매 기록. 가격은 플랜 문서 8-3" },
+    { "id": "I-02", "area": "I", "module": "billing", "priority": "P1", "verification": "공식", "status": "todo", "title": "추가 저장공간", "rule": "웹에서만 구매, 프리미엄 만료 시 동결" },
+    { "id": "I-03", "area": "I", "module": "billing", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "쿠폰(리딤) 코드", "rule": "상단 \"쿠폰 코드\" 등록 창, 코드 구매 링크, iOS 앱 사용 불가" },
+    { "id": "I-04", "area": "I", "module": "billing", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "초대 보상", "rule": "구매 일수 35% 지급, 월 10명 구매마다 업로드 100GB(최대 5TB), 초대 방식 3가지, 12시간 내 관계 설정, 초대 기록" },
+    { "id": "I-05", "area": "I", "module": "billing", "priority": "P2", "verification": "미확인", "status": "todo", "title": "추천 보상 Pro", "rule": "현금 보상형 상위 프로그램(조건 미확인)" },
+    { "id": "I-06", "area": "I", "module": "billing", "priority": "P2", "verification": "로그인 확인", "status": "todo", "title": "출석 체크", "rule": "브라우저 확장에서 매일 출석해 무료 프리미엄" },
+
+    { "id": "J-01", "area": "J", "module": "admin-content", "priority": "P0", "verification": "공식", "status": "todo", "title": "신고·이의제기", "rule": "콘텐츠 침해 신고, 차단 이의제기" },
+    { "id": "J-02", "area": "J", "module": "admin-content", "priority": "P0", "verification": "공식", "status": "todo", "title": "저작권 신고 창구", "rule": "별도 신고 접수 페이지" },
+    { "id": "J-03", "area": "J", "module": "admin-content", "priority": "P2", "verification": "공식", "status": "todo", "title": "투명성 보고서", "rule": "요청·조치 통계 공개" },
+    { "id": "J-04", "area": "J", "module": "admin-content", "priority": "P0", "verification": "공식", "status": "todo", "title": "정책 문서 7종", "rule": "이용약관, 개인정보처리방침, 멤버십 약관, 악용 방지, 아동 보호, 저작권, 쿠키. 미믹 고유 문장 + 법무 검토" },
+
+    { "id": "K-01", "area": "K", "module": "admin-content", "priority": "P0", "verification": "공식", "status": "todo", "title": "고객지원", "rule": "도움말 센터, FAQ, 문의, 지원 이메일" },
+    { "id": "K-02", "area": "K", "module": "admin-content", "priority": "P1", "verification": "공식", "status": "todo", "title": "소개 페이지", "rule": "서비스 소개, BT 소개, 플랫폼별 다운로드, TV 설치 안내, 블로그" },
+    { "id": "K-03", "area": "K", "module": "admin-content", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "다국어", "rule": "URL 로케일, 설정에서 언어 변경(한국어·영어부터)" },
+    { "id": "K-04", "area": "K", "module": "auth", "priority": "P2", "verification": "공식", "status": "todo", "title": "지역 정책", "rule": "국가별 가입·다운로드 제한 설정" },
+    { "id": "K-05", "area": "K", "module": "admin-content", "priority": "P0", "verification": "공식", "status": "todo", "title": "알림", "rule": "이메일·앱 푸시·사이트 내 알림(만료, 삭제 예고, 토큰 생성, 다운로드 완료 등)" },
+    { "id": "K-06", "area": "K", "module": "admin-content", "priority": "P0", "verification": "미확인", "status": "todo", "title": "관리자(백오피스)", "rule": "회원·결제·환불·쿠폰 발급·신고·차단·쿼터 정책·통계. 외부에서 볼 수 없어 미믹 기준으로 새로 설계" },
+    { "id": "K-07", "area": "K", "module": "integrations", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "환경설정", "rule": "기본·전송·액세스 및 통합 3개 탭" },
+    { "id": "K-08", "area": "K", "module": "drive", "priority": "P1", "verification": "로그인 확인", "status": "todo", "title": "온보딩 기본 콘텐츠", "rule": "신규 계정에 기본 폴더 \"My Pack\"과 미믹 자체 튜토리얼 영상, 무료 클라우드 다운로드 보너스 2회" },
+    { "id": "K-09", "area": "K", "module": "platforms", "priority": "P1", "verification": "앱 소개", "status": "todo", "title": "플랫폼별 설치본", "rule": "Windows(10·11, 구버전 별도), macOS(Apple 칩·Intel), Android(APK·Google Play·Galaxy Store), TV 전용 APK" }
+  ],
+  "decisions": [
+    { "id": "Q-1", "title": "토렌트 기능의 국내 법적 분류", "detail": "공유 기능과 결합 시 특수유형 부가통신사업자(웹하드) 등록·기술적 필터링 의무 대상인지 변호사 검토. A-01·A-02·D-* 범위에 영향" },
+    { "id": "Q-2", "title": "서비스 지역(국내 전용 / 글로벌)", "detail": "글로벌이면 글로벌·지역 프리미엄 2등급, 다국어, 해외결제 필요" },
+    { "id": "Q-3", "title": "실제 판매 가격(원화)", "detail": "플랜 문서 8-3의 PikPak 가격은 참고값. 원화 고정가 권장" },
+    { "id": "Q-4", "title": "PG사와 결제수단 범위", "detail": "토스페이먼츠 / 포트원, 암호화폐·Alipay·UnionPay 포함 여부" },
+    { "id": "Q-5", "title": "맥미니 단계의 용량 정책", "detail": "맥미니 1대로는 프리미엄 1인당 10TB 불가. 베타 한도를 server/core/plans.js 값으로 정함" },
+    { "id": "Q-6", "title": "토렌트 시딩 정책", "detail": "\"우리 클라우드 안에만\" 원칙: 다운로드 중 업로드 제한·완료 즉시 시딩 중지 여부(속도와 상충)" },
+    { "id": "Q-7", "title": "도메인·사업자 정보", "detail": "통신판매업 신고, 개인정보처리방침 기재 정보" },
+    { "id": "Q-8", "title": "상표 \"미믹/Mimic\" 조사", "detail": "KIPRIS 선등록 상표 검색 후 출원" },
+    { "id": "Q-9", "title": "\"A와 B의 중간\" 디자인 해석 확인", "detail": "현재 해석: 메뉴 구성·흐름·정책 수치는 PikPak과 같게, 로고·색·아이콘·문구·약관은 미믹 고유. 사용자 확인 대기" }
+  ],
+  "tasks": [
+    { "id": "T-1", "module": "core", "milestone": "M0", "title": "공통 뼈대 완성", "detail": "작성됨: config.js, db.js, schema.sql. 남음: auth.js, storage.js, files.js, plans.js, quota.js, notify.js, server/index.js(모듈 자동 등록), 웹 화면 틀(index.html·app.js·ui.js·styles.css·layout.js), test/helpers.js" },
+    { "id": "T-2", "module": "server-ops", "milestone": "M1", "title": "맥미니 서버 구축", "detail": "플랜 문서 11장: 외장 디스크 미러, UPS, pmset, Homebrew(node@24·ffmpeg·yt-dlp·caddy), launchd 상시 실행, 도메인·HTTPS, 백업·모니터링" },
+    { "id": "T-3", "module": "core", "milestone": "M0", "title": "미믹 디자인 시스템", "detail": "로고·색상·아이콘·타이포 등 미믹 고유 시각 요소. PikPak 자산 사용 금지" }
+  ]
+}
