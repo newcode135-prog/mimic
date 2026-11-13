@@ -16,6 +16,22 @@
       "result": null,
       "resultNote": "",
       "status": "waiting-judge"
+    },
+    {
+      "id": "G-002",
+      "at": "2026-11-13T03:20:01.468Z",
+      "host": "claude",
+      "title": "대전제 13조 → [꿰] 10대전제",
+      "question": "대전제 v0.3 13개 조항을 더블 바인드 [꿰]로 꿰어 10대전제 이하로 압축하라. 각 계명은 [단어 [단어]]처럼 서로 반대처럼 보이는 두 쪽을 하나로 꿴 형태로 쓰고 한 줄 풀이를 붙인다. 억지로 채우지 않는다: 남길 것이 없으면 빈칸 [ ]으로 둔다. 필요 없는 조항은 과감히 지운다(어디로 갔는지·왜 지웠는지 밝힐 것).",
+      "rule": "더 적은 계명으로 13조를 더 빠짐없이·더 적확하게 꿴 쪽이 낫다. 억지로 채운 칸은 감점, 빠뜨린 조항은 감점. 게임 규칙 v2 적용: 승리 = 완벽한 인정, 인정이 안 되면 learn. 판정은 창민(대표관리자).",
+      "hostAnswerSeal": "sha256:46095ccaac1b04389d9320d8df4c2d53d954ca3ab9b2a128e02dc0c189b335f8",
+      "playerAnswer": null,
+      "playerAnsweredAt": null,
+      "hostAnswer": null,
+      "revealedAt": null,
+      "result": null,
+      "resultNote": "",
+      "status": "waiting-player"
     }
   ]
 }
