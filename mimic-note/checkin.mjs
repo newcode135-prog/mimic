@@ -17,6 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { NOTE_DIR, loadMembers, findMember, loadDb, openMissions, doneMissions, formatMissions, loadPremise, readEnv, chatIdFor, telegramApi } from './lib.mjs';
 import { loadGames, latestGame, formatGame } from './game.mjs';
+import { HOME_DIR } from './passive/compress.mjs';
 
 export { loadMembers, findMember } from './lib.mjs';
 
@@ -118,6 +119,11 @@ async function main(argv) {
     console.error(`팀원을 찾지 못했습니다: "${args[0] || ''}". 가능한 이름: ${members.map((m) => `${m.name}(${m.id})`).join(', ')}`);
     return 1;
   }
+  // 접속 기록(이 컴퓨터에만): 패시브 스킬 [1차 압축]이 누구의 초안에 쌓을지 안다. [로그아웃]하면 지워진다.
+  try {
+    fs.mkdirSync(HOME_DIR(), { recursive: true });
+    fs.writeFileSync(path.join(HOME_DIR(), 'session.json'), JSON.stringify({ player: member.id, at: new Date().toISOString() }));
+  } catch { /* 접속 기록을 못 남겨도 체크인은 계속 */ }
 
   const db = loadDb();
   console.log(checkinText(member, db));
