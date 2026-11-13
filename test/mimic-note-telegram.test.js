@@ -686,7 +686,7 @@ test('체크인 텔레그램: Actions 에 요청하고 실제 결과를 보여 �
 // ---------------- 워크플로 설정 ----------------
 
 test('워크플로: main push(미션 DB)·10분 정기·수동 재전송, pull_request 없음, 최소 권한, 팀원마다 chat id 비밀값', () => {
-  const y = fs.readFileSync(path.join(NOTE_DIR, '..', '.github', 'workflows', 'mimic-checkin.yml'), 'utf8').replace(/^\s*#.*\n/gm, '');
+  const y = fs.readFileSync(path.join(NOTE_DIR, '..', '.github', 'workflows', 'mimic-checkin.yml'), 'utf8').replace(/\r\n/g, '\n').replace(/^\s*#.*\n/gm, '');
   assert.match(y, /push:\n\s+branches: \[main\]\n\s+paths:\n\s+- mimic-note\/data\/missions\.json\n\s+- mimic-note\/data\/members\.json/);
   assert.match(y, /cron: '\*\/10 \* \* \* \*'/);
   assert.match(y, /workflow_dispatch:[\s\S]*member:[\s\S]*force:/);
