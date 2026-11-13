@@ -88,7 +88,7 @@ export async function render(root, ctx) {
             b.onclick = async () => {
               b.disabled = true;
               try {
-                await buyProduct(ctx, x.id, 'card', draw);
+                await buyProduct(ctx, x.id, p.methods?.includes('card') ? 'card' : p.methods?.[0] || 'card', draw);
               } catch (e) {
                 toastError(e);
               } finally {

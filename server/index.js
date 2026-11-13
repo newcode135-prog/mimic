@@ -117,6 +117,8 @@ ${wrong ? '<p class="err">접속 키가 맞지 않아요 / Wrong key</p>' : ''}<
       oauth: Object.fromEntries(Object.entries(cfg.oauth).map(([k, v]) => [k, !!v.clientId])),
       paymentsTestMode: cfg.dev && !cfg.payments.tossSecretKey && !cfg.payments.tossSecretKeyUsd,
       telegram: !!cfg.telegramToken,
+      // 미리보기 접속 키: 이 응답은 이미 키를 아는 사람만 받는다(위 접속 키 검사). 공유 링크에 붙여 받는 사람이 바로 열게 한다
+      ...(cfg.sitePassword ? { siteKey: cfg.sitePassword } : {}),
     }),
   );
   app.get('/api/me', requireUser, (req, res) => {

@@ -10,6 +10,7 @@ import {
   PRODUCTS, METHODS_BY_CURRENCY, REFERRAL, REFERRAL_PRO, EXPIRY, CHECKIN, LIMITS, MONTHLY_QUOTA, APP_QUOTA_SHARE, FREE_APP_DAILY_DOWN, SPEED_BPS,
   TRIAL_REMIND_DAYS, RENEW_REMIND_DAYS, RENEW_RETRIES, ORDER_KEEP_DAYS, GB, TB, MB, isPremium, capacityOf, productDays,
 } from '../../core/plans.js';
+import { paypal, paypalLive, ensurePlan, usd as ppUsd, cents as ppCents, linkOf } from './paypal.js';
 
 export const migrations = `
 CREATE TABLE IF NOT EXISTS billing_orders (
@@ -203,6 +204,7 @@ const ADDED_COLUMNS = [
   ['billing_referral_rewards', 'currency', 'TEXT'],
   ['billing_referral_rewards', 'cash_due', 'INTEGER NOT NULL DEFAULT 0'],
   ['billing_referral_rewards', 'reward_cash', 'INTEGER NOT NULL DEFAULT 0'],
+  ['billing_subscriptions', 'pg_sub_id', 'TEXT'], // PayPal 구독 번호(I-SUB…): PayPal 이 자동 청구하는 구독
 ];
 export function upgradeSchema(db, cfg) {
   for (const [t, col, type] of ADDED_COLUMNS) {
@@ -220,13 +222,17 @@ const KST = 9 * 3600_000;
 const MONTH = 30 * DAY;
 const productById = (id) => PRODUCTS.find((p) => p.id === id);
 const tierOf = (u) => (u?.tier === 'regional' ? 'regional' : 'global');
-// 결제 통화(Q-2·Q-4): 가입 지역(users.region, auth regionOf 로 정함)이 한국이면 원화, 그 밖은 달러
-export const currencyOf = (region) => (region && region !== 'KR' ? 'USD' : 'KRW');
-const userCurrency = (u) => currencyOf(u?.region);
+// PayPal 직접 결제(2026-11-13 결정): 모든 사용자가 달러·PayPal 로 결제한다. 아니면 예전 토스 방식(지역별 원화·달러)
+export const isPaypal = (cfg) => cfg?.payments?.provider === 'paypal';
+// 결제 통화(Q-2·Q-4): 가입 지역(users.region, auth regionOf 로 정함)이 한국이면 원화, 그 밖은 달러. PayPal 이면 모두 달러
+export const currencyOf = (region, cfg) => (isPaypal(cfg) || (region && region !== 'KR') ? 'USD' : 'KRW');
+const userCurrency = (u, cfg) => currencyOf(u?.region, cfg);
+// 결제 수단: PayPal 이면 PayPal 하나
+const methodsOf = (cfg, cur) => (isPaypal(cfg) ? ['paypal'] : METHODS_BY_CURRENCY[cur]);
 // 토스는 통화마다 상점(MID)이 달라 비밀 키도 따로다
 const secretOf = (cfg, cur) => (cur === 'USD' ? cfg.payments?.tossSecretKeyUsd : cfg.payments?.tossSecretKey);
-// 결제 방식: 그 통화의 토스 운영 키가 있으면 live, 키 없는 개발 모드만 test, 운영 모드인데 키가 없으면 null(결제 받지 않음)
-const payMode = (cfg, cur = 'KRW') => (secretOf(cfg, cur) ? 'live' : cfg.dev ? 'test' : null);
+// 결제 방식: 그 통화의 토스 운영 키(PayPal 이면 PayPal 키)가 있으면 live, 키 없는 개발 모드만 test, 운영 모드인데 키가 없으면 null(결제 받지 않음)
+const payMode = (cfg, cur = 'KRW') => ((isPaypal(cfg) ? paypalLive(cfg) : secretOf(cfg, cur)) ? 'live' : cfg.dev ? 'test' : null);
 const testModeOf = (cfg, cur = 'KRW') => payMode(cfg, cur) === 'test';
 // 금액은 최소 단위(원·센트)로 다룬다. 토스 API 는 달러를 소수(4.31)로 주고받는다
 const toMajor = (n, cur) => (cur === 'USD' ? n / 100 : n);
@@ -253,6 +259,11 @@ export async function refreshFx(ctx, url = FX_URL) {
 }
 // 원화 가격 → 결제 통화의 최소 단위
 const priceIn = (krw, cur, rate) => (cur === 'USD' ? Math.round((krw * 100) / rate) : krw);
+// 상품 가격(결제 통화의 최소 단위). PayPal 이면 달러 고정가(plans.js usd), 아니면 원화가(달러는 환율 환산)
+const priceOf = (cfg, p, tier, cur, rate, first = false) => {
+  if (isPaypal(cfg) && p.usd) return (first && p.usd.firstPrice ? p.usd.firstPrice : p.usd.price)[tier];
+  return priceIn(first && p.firstPrice ? p.firstPrice[tier] : p.price[tier], cur, rate);
+};
 
 // ---------- 빌링키 암호화(Q-11): AES-256-GCM, 키는 MIMIC_SECRET 에서 HKDF 로 만든다. 로그에 남기지 말 것 ----------
 const cardKey = (cfg) => Buffer.from(crypto.hkdfSync('sha256', cfg.secret, '', 'mimic:billing-key:v1', 32));
@@ -327,12 +338,12 @@ function orderApi(o) {
 }
 // 구독의 마지막 결제(갱신은 같은 수단·통화로 청구한다). 결제 기록이 없으면 사용자 지역 통화
 const lastPaidOf = (db, s) => db.prepare("SELECT method, currency FROM billing_orders WHERE subscription_id=? AND status IN ('paid','refund_requested') ORDER BY paid_at DESC LIMIT 1").get(s.id);
-const subCurrency = (db, s, u) => lastPaidOf(db, s)?.currency || userCurrency(u);
+const subCurrency = (ctx, s, u) => lastPaidOf(ctx.db, s)?.currency || userCurrency(u, ctx.cfg);
 // 갱신 가격(정가)을 구독 통화의 최소 단위로
-const renewPriceOf = (ctx, s, u, cur = subCurrency(ctx.db, s, u)) => priceIn(productById(s.product_id).price[tierOf(u)], cur, fxOf(ctx).rate);
+const renewPriceOf = (ctx, s, u, cur = subCurrency(ctx, s, u)) => priceOf(ctx.cfg, productById(s.product_id), tierOf(u), cur, fxOf(ctx).rate);
 function subApi(ctx, s, u) {
   const p = productById(s.product_id);
-  const currency = subCurrency(ctx.db, s, u);
+  const currency = subCurrency(ctx, s, u);
   return {
     id: s.id, productId: s.product_id, label: p?.label, labelEn: p?.labelEn, months: p?.months, status: s.status, autoRenew: !!s.auto_renew,
     currentPeriodEnd: s.current_period_end, nextChargeAt: s.auto_renew ? s.next_charge_at : null, renewPrice: renewPriceOf(ctx, s, u, currency), currency, createdAt: s.created_at, canceledAt: s.canceled_at,
@@ -341,8 +352,8 @@ function subApi(ctx, s, u) {
 
 // ---------- 혜택 비교표(8-1, 8-2) ----------
 const fmt = (n) => (n >= TB ? `${+(n / TB).toFixed(1)}TB` : `${Math.round(n / GB)}GB`);
-function compareTables(cur, rate) {
-  const month = (tier) => priceIn(productById('sub_month').price[tier], cur, rate);
+function compareTables(cfg, cur, rate) {
+  const month = (tier) => priceOf(cfg, productById('sub_month'), tier, cur, rate);
   const F = LIMITS.free;
   const P = LIMITS.premium;
   const q = `${fmt(MONTHLY_QUOTA.cloud)} · ${fmt(MONTHLY_QUOTA.down)} · ${fmt(MONTHLY_QUOTA.up)}`;
@@ -410,6 +421,85 @@ async function tossBillingPay(cfg, card, o) {
 }
 
 // ---------- 주문 ----------
+// ---------- PayPal(provider=paypal, 운영 키가 있을 때) ----------
+// pg_key: 1회 결제는 주문 단계에서 PayPal 주문 번호 → 캡처 뒤 캡처 번호(환불에 씀), 구독은 'sub:<구독 번호>'
+const PP_SUB = 'sub:';
+// 갱신 주문은 'sub:<구독 번호>:<청구 시각>'
+const subIdOf = (o) => (o.pg_key?.startsWith(PP_SUB) ? o.pg_key.slice(PP_SUB.length).split(':')[0] : null);
+const ppPlanFor = (ctx, o, user) => {
+  const p = productById(o.product_id);
+  const tier = tierOf(user);
+  return ensurePlan(ctx, { product: p, tier, first: !!o.first_discount, regular: priceOf(ctx.cfg, p, tier, 'USD', 0), intro: o.amount });
+};
+// 결제창으로 보낼 주소를 만든다. 돌아올 주소: /drive/payment?paypal=<order|sub|cancel>&orderId=…
+async function paypalStart(ctx, o, user, back) {
+  const { db, cfg } = ctx;
+  const p = productById(o.product_id);
+  const ret = (kind) => `${back}/drive/payment?paypal=${kind}&orderId=${encodeURIComponent(o.id)}`;
+  const brand = { brand_name: 'Mimic', shipping_preference: 'NO_SHIPPING', return_url: ret(isNewSubscription(o) ? 'sub' : 'order'), cancel_url: ret('cancel') };
+  if (isNewSubscription(o)) {
+    const plan_id = await ppPlanFor(ctx, o, user);
+    const sub = await paypal(cfg, '/v1/billing/subscriptions', { plan_id, custom_id: o.id, application_context: { ...brand, user_action: 'SUBSCRIBE_NOW' } }, { requestId: `mimic-sub-${o.id}` });
+    db.prepare('UPDATE billing_orders SET pg_key=? WHERE id=?').run(PP_SUB + sub.id, o.id);
+    return linkOf(sub, 'approve');
+  }
+  const order = await paypal(
+    cfg,
+    '/v2/checkout/orders',
+    {
+      intent: 'CAPTURE',
+      purchase_units: [{ custom_id: o.id, invoice_id: o.id, description: (p.labelEn || p.label).slice(0, 127), amount: { currency_code: 'USD', value: ppUsd(o.amount) } }],
+      payment_source: { paypal: { experience_context: { ...brand, user_action: 'PAY_NOW' } } },
+    },
+    { requestId: `mimic-order-${o.id}` },
+  );
+  db.prepare('UPDATE billing_orders SET pg_key=? WHERE id=?').run(order.id, o.id);
+  return linkOf(order, 'payer-action', 'approve');
+}
+// 1회 결제 캡처. 끝났으면 캡처 번호, 결제사 검토 중이면 null. 금액·통화·주문 번호가 다르면 거절
+async function paypalCapture(ctx, o) {
+  const { cfg } = ctx;
+  if (!o.pg_key || o.pg_key.startsWith(PP_SUB)) fail(400, 'payment_key_required', 'PayPal 주문이 없습니다');
+  let data = await paypal(cfg, `/v2/checkout/orders/${encodeURIComponent(o.pg_key)}`);
+  if (data.status === 'APPROVED') data = await paypal(cfg, `/v2/checkout/orders/${encodeURIComponent(o.pg_key)}/capture`, {}, { requestId: `mimic-capture-${o.id}` });
+  const unit = data.purchase_units?.[0];
+  const cap = unit?.payments?.captures?.[0];
+  if (!cap) fail(402, 'payment_failed', 'PayPal 결제가 승인되지 않았습니다');
+  if ((unit.custom_id ?? cap.custom_id) !== o.id || cap.amount?.currency_code !== 'USD' || ppCents(cap.amount?.value) !== o.amount) fail(402, 'amount_mismatch', '결제 금액이 주문과 다릅니다');
+  if (cap.status === 'COMPLETED') return cap.id;
+  if (cap.status === 'PENDING') return null;
+  fail(402, 'payment_failed', 'PayPal 결제가 완료되지 않았습니다');
+}
+// 새 구독: PayPal 에서 활성이고 첫 청구가 이 주문 금액과 같을 때 구독 번호를 돌려준다. 아직 청구 전이면 null
+async function paypalSubReady(ctx, o, user) {
+  const id = subIdOf(o) || fail(400, 'payment_key_required', 'PayPal 구독이 없습니다');
+  const sub = await paypal(ctx.cfg, `/v1/billing/subscriptions/${encodeURIComponent(id)}`);
+  if (sub.custom_id !== o.id || sub.plan_id !== (await ppPlanFor(ctx, o, user))) fail(402, 'amount_mismatch', '구독 정보가 주문과 다릅니다');
+  if (['CANCELLED', 'EXPIRED', 'SUSPENDED'].includes(sub.status)) fail(402, 'payment_failed', 'PayPal 구독이 활성화되지 않았습니다');
+  const lp = sub.billing_info?.last_payment;
+  if (sub.status !== 'ACTIVE' || !lp) return null;
+  if (lp.amount?.currency_code !== 'USD' || ppCents(lp.amount?.value) !== o.amount) fail(402, 'amount_mismatch', '결제 금액이 주문과 다릅니다');
+  return sub.id;
+}
+// 결제는 됐는데 반영에 실패했을 때 되돌린다(캡처 환불·구독 취소)
+async function paypalUndo(cfg, o, reason) {
+  const sid = subIdOf(o);
+  if (sid) return paypal(cfg, `/v1/billing/subscriptions/${encodeURIComponent(sid)}/cancel`, { reason: reason.slice(0, 127) });
+  if (o.pg_key) return paypal(cfg, `/v2/payments/captures/${encodeURIComponent(o.pg_key)}/refund`, {}, { requestId: `mimic-refund-${o.id}` });
+}
+// 구독 결제 환불: 그 주문을 결제한 무렵의 구독 거래(sale)를 찾아 환불한다
+async function paypalRefundSub(cfg, o) {
+  const sid = subIdOf(o);
+  const iso = (ms) => new Date(ms).toISOString();
+  const from = (o.paid_at || o.created_at) - 3 * DAY;
+  const list = await paypal(cfg, `/v1/billing/subscriptions/${encodeURIComponent(sid)}/transactions?start_time=${iso(from)}&end_time=${iso(Math.min(now(), from + 6 * DAY))}`);
+  const sale = (list.transactions || []).find((x) => x.status === 'COMPLETED' && ppCents(x.amount_with_breakdown?.gross_amount?.value) === o.amount);
+  if (!sale) fail(409, 'not_refundable', 'PayPal 에서 이 결제를 찾지 못했습니다. PayPal 비즈니스 화면에서 직접 환불해 주세요');
+  await paypal(cfg, `/v1/payments/sale/${encodeURIComponent(sale.id)}/refund`, {}, { requestId: `mimic-refund-${o.id}` });
+}
+const paypalSetAutoRenew = (cfg, subId, on) =>
+  paypal(cfg, `/v1/billing/subscriptions/${encodeURIComponent(subId)}/${on ? 'activate' : 'suspend'}`, { reason: on ? 'Auto-renewal turned on' : 'Auto-renewal turned off by the user' });
+
 // 첫 구독 할인은 사용자당 한 번(8-5): 어떤 구독이든 한 번 했으면 월·연 모두 정가
 function hasSubscribed(db, userId) {
   return !!db.prepare('SELECT 1 FROM billing_subscriptions WHERE user_id=? LIMIT 1').get(userId);
@@ -425,26 +515,25 @@ function assertCanApply(db, o, t = now()) {
   if (o.kind === 'addon_storage' && !isPremium(userById(db, o.user_id), t)) fail(403, 'premium_required', '추가 저장공간은 프리미엄 회원만 구매할 수 있습니다');
 }
 // 결제할 금액(cur 의 최소 단위)과 첫 구독 할인 여부
-function priceFor(db, user, p, cur, rate) {
-  const tier = tierOf(user);
+function priceFor(cfg, db, user, p, cur, rate) {
   const first = p.kind === 'subscription' && !!p.firstPrice && !(user && hasSubscribed(db, user.id));
-  return { amount: priceIn(first ? p.firstPrice[tier] : p.price[tier], cur, rate), first };
+  return { amount: priceOf(cfg, p, tierOf(user), cur, rate, first), first };
 }
 
 // currency: 갱신은 구독 때 쓴 통화, 새 주문은 사용자 지역 통화
-export function createOrder(ctx, user, productId, method, { renewalOf = null, t = now(), currency = userCurrency(user) } = {}) {
+export function createOrder(ctx, user, productId, method, { renewalOf = null, t = now(), currency = userCurrency(user, ctx.cfg) } = {}) {
   const { db, cfg } = ctx;
   const p = productById(productId);
   if (!p) fail(400, 'invalid_product', '없는 상품입니다');
-  if (!METHODS_BY_CURRENCY[currency]?.includes(method)) fail(400, 'invalid_method', '지원하지 않는 결제 수단입니다');
+  if (!methodsOf(cfg, currency)?.includes(method)) fail(400, 'invalid_method', '지원하지 않는 결제 수단입니다');
   if (!payMode(cfg, currency)) fail(503, 'payments_unavailable', '지금은 결제를 받을 수 없습니다. 잠시 뒤 다시 시도해 주세요');
   const rate = fxOf(ctx).rate;
   let amount;
   let first = false;
-  if (renewalOf) amount = priceIn(p.price[tierOf(user)], currency, rate); // 갱신은 정가
+  if (renewalOf) amount = priceOf(cfg, p, tierOf(user), currency, rate); // 갱신은 정가
   else {
     assertCanApply(db, { user_id: user.id, kind: p.kind }, t);
-    ({ amount, first } = priceFor(db, user, p, currency, rate));
+    ({ amount, first } = priceFor(cfg, db, user, p, currency, rate));
   }
   const id = newId('ord_');
   db.prepare(
@@ -470,10 +559,11 @@ export function applyOrder(ctx, order, t = now(), card = null) {
       } else {
         const sid = newId('sub_');
         // 운영(토스) 결제는 카드 빌링키를 받은 구독만 자동 갱신한다. 1회 승인(PayPal 등)으로 산 구독은 기간제(auto_renew=0)
-        if (card) {
+        // PayPal 구독(card.paypalSub)은 PayPal 이 자동 청구하므로 자동 갱신으로 둔다
+        if (card?.billing_key) {
           db.prepare('INSERT INTO billing_cards (user_id, billing_key, customer_key, created_at) VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET billing_key=excluded.billing_key, customer_key=excluded.customer_key, created_at=excluded.created_at').run(uid, card.billing_key, card.customer_key, t);
         }
-        db.prepare('INSERT INTO billing_subscriptions (id, user_id, product_id, auto_renew, current_period_end, next_charge_at, created_at) VALUES (?,?,?,?,?,?,?)').run(sid, uid, p.id, order.test_mode || card ? 1 : 0, until, until, t);
+        db.prepare('INSERT INTO billing_subscriptions (id, user_id, product_id, auto_renew, current_period_end, next_charge_at, created_at, pg_sub_id) VALUES (?,?,?,?,?,?,?,?)').run(sid, uid, p.id, order.test_mode || card ? 1 : 0, until, until, t, card?.paypalSub || null);
         db.prepare('UPDATE billing_orders SET subscription_id=? WHERE id=?').run(sid, order.id);
       }
     } else if (p.kind === 'once') {
@@ -689,7 +779,7 @@ export function rewardInviter(ctx, inviteeId, days, source, t = now()) {
       const prev = Number(db.prepare('SELECT COALESCE(SUM(purchase_days),0) AS n FROM billing_referral_rewards WHERE invitee_id=?').get(inviteeId).n);
       const pro = isPro(db, inviterId);
       const paid = pro && db.prepare('SELECT amount, currency FROM billing_orders WHERE id=?').get(source);
-      const currency = pro ? paid?.currency || userCurrency(invitee) : null;
+      const currency = pro ? paid?.currency || userCurrency(invitee, ctx.cfg) : null;
       const due = paid ? Math.round((paid.amount * proSettings(db).cashPercent) / 100) : 0;
       // 같은 기기 의심 초대는 구매만 기록하고 보상은 주지 않는다(8-8 이상 데이터 걸러내기)
       const reward = inv.suspicious || pro ? 0 : referralShare(prev + days) - referralShare(prev);
@@ -926,9 +1016,10 @@ export function checkin(ctx, user, t = now()) {
 // 갱신 안내(7일 전)·자동 결제·기간 종료·체험 코드 종료 알림
 // 갱신 주문의 결제 수단: 운영은 빌링키 카드, 테스트는 이 구독을 마지막으로 결제한 수단
 function renewMethod(ctx, s, cur) {
-  if (!testModeOf(ctx.cfg, cur)) return 'card';
+  if (!testModeOf(ctx.cfg, cur)) return isPaypal(ctx.cfg) ? 'paypal' : 'card';
   const m = lastPaidOf(ctx.db, s)?.method;
-  return METHODS_BY_CURRENCY[cur].includes(m) ? m : 'card';
+  const ms = methodsOf(ctx.cfg, cur);
+  return ms.includes(m) ? m : ms.includes('card') ? 'card' : ms[0];
 }
 // 운영 자동 결제 카드(빌링키)는 원화 카드 구독에만 있다(해외 결제는 1회 승인이라 기간제)
 const renewCard = (ctx, s, cur) => !testModeOf(ctx.cfg, cur) && cur === 'KRW' && cardOf(ctx.db, s.user_id);
@@ -975,10 +1066,50 @@ function stopNoCard(ctx, s) {
     link: '/drive/payment',
   });
 }
+// PayPal 구독 갱신: PayPal 이 청구한다. 미믹은 PayPal 에 조회해 이번 기간 청구가 있으면 기록·연장하고,
+// 구독이 끊겼으면 자동 갱신을 끈다(남은 기간은 그대로). 청구가 아직이면 6시간 뒤 다시 보고, 기간이 끝나고 3일이 지나도 없으면 멈춘다
+const PP_RECHECK = 6 * 3600_000;
+const PP_GRACE = 3 * DAY;
+export async function syncPaypalSub(ctx, s, t = now()) {
+  const { db, cfg } = ctx;
+  const sub = await paypal(cfg, `/v1/billing/subscriptions/${encodeURIComponent(s.pg_sub_id)}`);
+  const lp = sub.billing_info?.last_payment;
+  const paidAt = lp ? Date.parse(lp.time) : 0;
+  const key = `${PP_SUB}${s.pg_sub_id}:${lp?.time}`;
+  // 이번 기간(끝나기 3일 전부터)에 들어온 청구이고 아직 기록하지 않았으면 갱신으로 반영
+  if (lp && paidAt > s.current_period_end - PP_GRACE && !db.prepare('SELECT 1 FROM billing_orders WHERE pg_key=?').get(key)) {
+    if (lp.amount?.currency_code !== 'USD') return console.error('[billing] PayPal 갱신 통화가 다릅니다', s.id);
+    const u = userById(db, s.user_id);
+    const o = createOrder(ctx, u, s.product_id, 'paypal', { renewalOf: s.id, t, currency: 'USD' });
+    db.prepare('UPDATE billing_orders SET amount=?, pg_key=? WHERE id=?').run(ppCents(lp.amount.value), key, o.id); // 실제로 청구된 금액
+    return applyOrder(ctx, db.prepare('SELECT * FROM billing_orders WHERE id=?').get(o.id), t);
+  }
+  if (!['ACTIVE', 'APPROVAL_PENDING', 'APPROVED'].includes(sub.status)) {
+    db.prepare('UPDATE billing_subscriptions SET auto_renew=0, canceled_at=COALESCE(canceled_at, ?) WHERE id=?').run(t, s.id);
+    return;
+  }
+  // PayPal 쪽에서 다시 켠 구독은 자동 갱신도 다시 켠다
+  if (sub.status === 'ACTIVE' && !s.auto_renew && s.current_period_end > t) db.prepare('UPDATE billing_subscriptions SET auto_renew=1, canceled_at=NULL WHERE id=?').run(s.id);
+  if (t < s.current_period_end) return; // 아직 이번 기간(웹훅으로 불린 경우)
+  if (t < s.current_period_end + PP_GRACE) return db.prepare('UPDATE billing_subscriptions SET next_charge_at=?, reminded_for=? WHERE id=?').run(t + PP_RECHECK, t + PP_RECHECK, s.id);
+  db.prepare('UPDATE billing_subscriptions SET auto_renew=0 WHERE id=?').run(s.id);
+  await paypal(cfg, `/v1/billing/subscriptions/${encodeURIComponent(s.pg_sub_id)}/cancel`, { reason: 'Renewal payment not received' }).catch((e) => console.error('[billing] PayPal 구독 취소 실패', s.id, e.message));
+  tell(ctx, s.user_id, {
+    kind: 'billing',
+    email: true,
+    title: '구독 갱신 결제를 받지 못했습니다',
+    body: 'PayPal 에서 갱신 결제가 완료되지 않아 자동 갱신을 멈췄습니다. 계속 쓰려면 결제 화면에서 다시 구독해 주세요.',
+    titleEn: "We didn't receive your renewal payment",
+    bodyEn: "PayPal didn't complete the renewal payment, so auto-renewal has been stopped. To keep using Premium, please subscribe again on the payment page.",
+    link: '/drive/payment',
+  });
+}
+
 async function renewOne(ctx, s, t) {
   const { db, cfg } = ctx;
+  if (s.pg_sub_id) return payMode(cfg) === 'live' && isPaypal(cfg) ? syncPaypalSub(ctx, s, t) : undefined;
   const u = userById(db, s.user_id);
-  const cur = subCurrency(db, s, u);
+  const cur = subCurrency(ctx, s, u);
   const card = renewCard(ctx, s, cur);
   if (!testModeOf(cfg, cur) && !card) return stopNoCard(ctx, s);
   const o = createOrder(ctx, u, s.product_id, renewMethod(ctx, s, cur), { renewalOf: s.id, t, currency: cur });
@@ -1003,9 +1134,9 @@ export async function runRenewals(ctx, t = now()) {
     const p = productById(s.product_id);
     const u = userById(db, s.user_id);
     const day = new Date(s.next_charge_at + KST).toISOString().slice(0, 10);
-    const cur = subCurrency(db, s, u);
+    const cur = subCurrency(ctx, s, u);
     const price = renewPriceOf(ctx, s, u, cur);
-    tell(ctx, s.user_id, testModeOf(cfg, cur) || renewCard(ctx, s, cur)
+    tell(ctx, s.user_id, testModeOf(cfg, cur) || renewCard(ctx, s, cur) || s.pg_sub_id
       ? {
           kind: 'billing', email: true, link: '/drive/orders',
           title: `구독이 ${day}에 자동 갱신됩니다`,
@@ -1183,7 +1314,8 @@ async function settle(ctx, o, paymentKey, card = null) {
     const cur = db.prepare('SELECT * FROM billing_orders WHERE id=?').get(o.id);
     if (e.code === 'order_closed' && cur?.status === 'paid') return cur;
     if (paymentKey && e.code !== 'order_closed') {
-      await tossCancel(cfg, paymentKey, '주문 반영 실패', o.currency).catch((x) => console.error('[billing] 결제 취소 실패', o.id, x.message));
+      const undo = isPaypal(cfg) ? paypalUndo(cfg, { ...o, pg_key: paymentKey }, 'Order could not be applied') : tossCancel(cfg, paymentKey, '주문 반영 실패', o.currency);
+      await undo.catch((x) => console.error('[billing] 결제 취소 실패', o.id, x.message));
       db.prepare("UPDATE billing_orders SET status='failed' WHERE id=? AND status='pending'").run(o.id);
     }
     throw e;
@@ -1224,7 +1356,7 @@ export function register(app, ctx) {
     const tier = tierOf(u);
     // 로그인 전에는 지금 요청의 지역(auth regionOf: IP 국가 헤더·기기 언어)으로 통화를 정한다
     const region = (u ? u.region : ctx.modules.auth?.regionOf?.(req, null, cfg)?.region) || 'KR';
-    const cur = currencyOf(region);
+    const cur = currencyOf(region, cfg);
     const fx = fxOf(ctx);
     const test = testModeOf(cfg, cur);
     const active = u && db.prepare("SELECT * FROM billing_subscriptions WHERE user_id=? AND status='active' ORDER BY created_at DESC LIMIT 1").get(u.id);
@@ -1232,30 +1364,42 @@ export function register(app, ctx) {
       tier,
       currency: cur,
       region,
-      fx: cur === 'USD' ? fx : null, // 달러 가격에 쓴 USD/KRW 와 그 기준일(date=null 이면 기본값)
+      fx: cur === 'USD' && !isPaypal(cfg) ? fx : null, // 달러 가격에 쓴 USD/KRW 와 그 기준일(date=null 이면 기본값). PayPal 은 달러 고정가
+      provider: isPaypal(cfg) ? 'paypal' : 'toss',
       testMode: test,
       available: !!payMode(cfg, cur),
       tossClientKey: test ? null : (cur === 'USD' ? cfg.payments.tossClientKeyUsd : cfg.payments.tossClientKey) || null,
-      methods: METHODS_BY_CURRENCY[cur],
+      methods: methodsOf(cfg, cur),
       premium: isPremium(u),
       premiumUntil: u?.premium_until || null,
       activeSubscription: active ? subApi(ctx, active, u) : null,
       products: PRODUCTS.map((p) => {
-        const { amount, first } = priceFor(db, u, p, cur, fx.rate);
+        const { amount, first } = priceFor(cfg, db, u, p, cur, fx.rate);
         return {
           id: p.id, kind: p.kind, months: p.months, days: productDays(p), label: p.label, labelEn: p.labelEn, bytes: p.bytes || null, amounts: p.amounts || null,
-          price: priceIn(p.price[tier], cur, fx.rate), firstPrice: p.firstPrice ? priceIn(p.firstPrice[tier], cur, fx.rate) : null, firstDiscount: first, payNow: amount,
+          price: priceOf(cfg, p, tier, cur, fx.rate), firstPrice: p.firstPrice ? priceOf(cfg, p, tier, cur, fx.rate, true) : null, firstDiscount: first, payNow: amount,
         };
       }),
-      compare: compareTables(cur, fx.rate),
+      compare: compareTables(cfg, cur, fx.rate),
     });
   });
 
-  app.post(`${R}/orders`, web, (req, res) => {
+  // 결제창에서 돌아올 이 사이트 주소(체험 서버는 지금 접속한 주소, auth siteBase 와 같은 규칙)
+  const backOf = (req) => (cfg.dev && cfg.demo && req.get('host') ? `${req.protocol}://${req.get('host')}` : cfg.baseUrl).replace(/\/+$/, '');
+  app.post(`${R}/orders`, web, async (req, res) => {
     const o = createOrder(ctx, req.user, String(req.body?.productId || ''), String(req.body?.method || ''));
     // 운영 원화 카드 구독은 결제창에서 자동 결제 카드를 등록(빌링 인증)하고, 서버가 빌링키로 첫 결제를 청구한다
     const customerKey = !o.test_mode && isNewSubscription(o) && o.method === 'card' && o.currency === 'KRW' ? customerKeyOf(cfg, req.user.id) : null;
-    res.json({ orderId: o.id, amount: o.amount, currency: o.currency, testMode: !!o.test_mode, customerKey, order: orderApi(o) });
+    // PayPal 운영 결제: PayPal 주문(1회)·구독을 만들고 승인 화면 주소를 준다. 화면은 그 주소로 보낸다
+    let approveUrl = null;
+    if (!o.test_mode && isPaypal(cfg)) {
+      approveUrl = await paypalStart(ctx, o, req.user, backOf(req)).catch((e) => {
+        db.prepare("UPDATE billing_orders SET status='failed' WHERE id=? AND status='pending'").run(o.id);
+        throw e;
+      });
+      if (!approveUrl) fail(502, 'payment_failed', 'PayPal 결제 화면을 열지 못했습니다');
+    }
+    res.json({ orderId: o.id, amount: o.amount, currency: o.currency, testMode: !!o.test_mode, customerKey, approveUrl, order: orderApi(o) });
   });
 
   app.post(`${R}/orders/:id/confirm`, web, async (req, res) => {
@@ -1272,6 +1416,14 @@ export function register(app, ctx) {
         throw e;
       }
     };
+    const orFailAsync = async (fn) => {
+      try {
+        return await fn();
+      } catch (e) {
+        closeFailed();
+        throw e;
+      }
+    };
     orFail(() => assertCanApply(db, o)); // 돈을 받기 전에 먼저 확인(중복 구독·첫 할인·추가 저장공간 프리미엄)
     let paymentKey = null;
     let card = null;
@@ -1281,6 +1433,19 @@ export function register(app, ctx) {
       if (result === 'fail') {
         closeFailed();
         return res.json({ ok: false, status: 'failed', order: orderApi({ ...o, status: 'failed' }) });
+      }
+    } else if (isPaypal(cfg)) {
+      // PayPal 승인 화면에서 돌아옴: 구독은 PayPal 에서 활성·첫 청구 확인, 1회 결제는 서버가 캡처
+      if (isNewSubscription(o)) {
+        const subId = await orFailAsync(() => paypalSubReady(ctx, o, req.user));
+        if (!subId) return res.json({ ok: true, status: 'pending', order: orderApi(o) }); // 첫 청구가 끝나면 웹훅·정기 작업이 반영
+        card = { paypalSub: subId };
+        paymentKey = o.pg_key;
+      } else {
+        const capId = await orFailAsync(() => paypalCapture(ctx, o));
+        if (!capId) return res.json({ ok: true, status: 'pending', order: orderApi(o) });
+        db.prepare('UPDATE billing_orders SET pg_key=? WHERE id=?').run(capId, o.id);
+        paymentKey = capId;
       }
     } else if (req.body?.authKey) {
       // 빌링 인증에서 돌아옴: 빌링키 발급 → 빌링키로 첫 결제
@@ -1341,6 +1506,44 @@ export function register(app, ctx) {
     res.json({ ok: true });
   });
 
+  // PayPal 웹훅: 본문은 믿지 않고 번호만 꺼내 PayPal 에 다시 조회한 결과로 반영한다(서명 검증 없이도 위조 알림은 반영되지 않음).
+  // - 첫 구독 활성·첫 청구(BILLING.SUBSCRIPTION.ACTIVATED·PAYMENT.SALE.COMPLETED): 대기 중인 구독 주문을 확정
+  // - 갱신 청구(PAYMENT.SALE.COMPLETED)·구독 취소·정지(BILLING.SUBSCRIPTION.*): 그 구독을 PayPal 기준으로 맞춤
+  // - 나중에 끝난 1회 결제(PAYMENT.CAPTURE.COMPLETED): 대기·실패 주문을 캡처 조회로 확정
+  // 오류가 나면 500 → PayPal 이 다시 보낸다
+  app.post(`${R}/paypal/webhook`, async (req, res) => {
+    if (!isPaypal(cfg) || payMode(cfg) !== 'live') return res.json({ ok: true });
+    const type = String(req.body?.event_type || '');
+    const r = req.body?.resource || {};
+    const subId = str(type.startsWith('BILLING.SUBSCRIPTION.') ? r.id : r.billing_agreement_id, 64);
+    if (subId) {
+      const s = db.prepare('SELECT * FROM billing_subscriptions WHERE pg_sub_id=?').get(subId);
+      if (s) {
+        if (s.status === 'active') await syncPaypalSub(ctx, s);
+        return res.json({ ok: true });
+      }
+      const o = db.prepare("SELECT * FROM billing_orders WHERE pg_key=? AND status IN ('pending','failed')").get(PP_SUB + subId);
+      if (o) {
+        const u = userById(db, o.user_id);
+        const ready = await paypalSubReady(ctx, o, u).catch((e) => (e.status === 402 ? null : Promise.reject(e)));
+        if (ready && db.prepare("UPDATE billing_orders SET status='pending' WHERE id=? AND status IN ('pending','failed')").run(o.id).changes === 1) {
+          await settle(ctx, { ...o, status: 'pending' }, o.pg_key, { paypalSub: ready }).catch((e) => e.code === 'order_closed' || console.error('[billing] PayPal 웹훅 반영 실패', o.id, e.message));
+        }
+      }
+      return res.json({ ok: true });
+    }
+    if (type === 'PAYMENT.CAPTURE.COMPLETED' && typeof r.id === 'string') {
+      const o = typeof r.custom_id === 'string' && db.prepare("SELECT * FROM billing_orders WHERE id=? AND status IN ('pending','failed') AND test_mode=0").get(r.custom_id);
+      if (!o || isNewSubscription(o) || !o.pg_key) return res.json({ ok: true });
+      const cap = await paypal(cfg, `/v2/payments/captures/${encodeURIComponent(r.id)}`);
+      const sameOrder = (cap.custom_id === o.id || cap.supplementary_data?.related_ids?.order_id === o.pg_key) && cap.amount?.currency_code === 'USD' && ppCents(cap.amount?.value) === o.amount;
+      if (cap.status === 'COMPLETED' && sameOrder && db.prepare("UPDATE billing_orders SET status='pending', pg_key=? WHERE id=? AND status IN ('pending','failed')").run(cap.id, o.id).changes === 1) {
+        await settle(ctx, { ...o, status: 'pending', pg_key: cap.id }, cap.id).catch((e) => e.code === 'order_closed' || console.error('[billing] PayPal 웹훅 반영 실패', o.id, e.message));
+      }
+    }
+    res.json({ ok: true });
+  });
+
   app.get(`${R}/orders`, account, (req, res) => {
     const rows = db.prepare("SELECT * FROM billing_orders WHERE user_id=? AND status!='pending' ORDER BY created_at DESC LIMIT 200").all(req.user.id);
     res.json({ items: rows.map(orderApi) });
@@ -1359,20 +1562,24 @@ export function register(app, ctx) {
   app.get(`${R}/subscriptions`, account, (req, res) => {
     const rows = db.prepare('SELECT * FROM billing_subscriptions WHERE user_id=? ORDER BY created_at DESC').all(req.user.id);
     // 자동 갱신을 켤 수 있는지: 테스트 결제이거나 운영 자동 결제 카드(원화 빌링키)가 등록돼 있을 때
-    res.json({ items: rows.map((s) => subApi(ctx, s, req.user)), premiumUntil: req.user.premium_until, autoRenewAvailable: testModeOf(cfg, userCurrency(req.user)) || (payMode(cfg) === 'live' && !!cardOf(db, req.user.id)) });
+    res.json({ items: rows.map((s) => subApi(ctx, s, req.user)), premiumUntil: req.user.premium_until, autoRenewAvailable: testModeOf(cfg, userCurrency(req.user, cfg)) || (payMode(cfg) === 'live' && (!!cardOf(db, req.user.id) || rows.some((s) => s.pg_sub_id))) });
   });
-  app.post(`${R}/subscriptions/:id/cancel`, web, (req, res) => {
+  // PayPal 구독은 PayPal 에서도 멈추고(suspend)·다시 켠다(activate). PayPal 요청이 실패하면 미믹 쪽도 바꾸지 않는다
+  app.post(`${R}/subscriptions/:id/cancel`, web, async (req, res) => {
     const s = mySub(req);
     if (s.status !== 'active') fail(409, 'not_active', '진행 중인 구독이 아닙니다');
+    if (s.pg_sub_id && s.auto_renew && payMode(cfg) === 'live' && isPaypal(cfg)) await paypalSetAutoRenew(cfg, s.pg_sub_id, false);
     db.prepare('UPDATE billing_subscriptions SET auto_renew=0, canceled_at=? WHERE id=?').run(now(), s.id);
     res.json({ ok: true, subscription: subApi(ctx, { ...s, auto_renew: 0, canceled_at: now() }, req.user) });
   });
-  app.post(`${R}/subscriptions/:id/resume`, web, (req, res) => {
+  app.post(`${R}/subscriptions/:id/resume`, web, async (req, res) => {
     const s = mySub(req);
-    const cur = subCurrency(db, s, req.user);
-    if (!testModeOf(cfg, cur) && !(payMode(cfg, cur) === 'live' && renewCard(ctx, s, cur))) fail(409, 'auto_renew_unavailable', '등록된 자동 결제 카드가 없어 자동 갱신을 켤 수 없습니다. 기간이 끝나면 카드로 다시 구독해 주세요');
+    const cur = subCurrency(ctx, s, req.user);
+    const pp = !!s.pg_sub_id && payMode(cfg, cur) === 'live' && isPaypal(cfg);
+    if (!testModeOf(cfg, cur) && !pp && !(payMode(cfg, cur) === 'live' && renewCard(ctx, s, cur))) fail(409, 'auto_renew_unavailable', '등록된 자동 결제 카드가 없어 자동 갱신을 켤 수 없습니다. 기간이 끝나면 카드로 다시 구독해 주세요');
     if (s.status !== 'active' || s.current_period_end <= now()) fail(409, 'not_active', '기간이 끝난 구독은 다시 결제해 주세요');
     if (db.prepare("SELECT 1 FROM billing_subscriptions WHERE user_id=? AND status='active' AND auto_renew=1 AND id!=?").get(req.user.id, s.id)) fail(409, 'already_subscribed', '자동 갱신 중인 다른 구독이 있습니다');
+    if (pp) await paypalSetAutoRenew(cfg, s.pg_sub_id, true);
     db.prepare('UPDATE billing_subscriptions SET auto_renew=1, canceled_at=NULL WHERE id=?').run(s.id);
     res.json({ ok: true, subscription: subApi(ctx, { ...s, auto_renew: 1, canceled_at: null }, req.user) });
   });
@@ -1457,7 +1664,7 @@ export function register(app, ctx) {
       pro: !!m,
       since: m?.created_at ?? null,
       ...proSettings(db),
-      currency: userCurrency(u),
+      currency: userCurrency(u, cfg),
       balances: CURRENCIES.map((c) => proBalance(db, u.id, c)),
       ledger: db.prepare('SELECT currency, amount, reason, created_at FROM billing_pro_ledger WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT 200').all(u.id).map((x) => ({ currency: x.currency, amount: x.amount, reason: x.reason, createdAt: x.created_at })),
       withdrawals: db.prepare('SELECT * FROM billing_withdrawals WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(u.id).map(withdrawalApi),
@@ -1494,7 +1701,14 @@ export function register(app, ctx) {
     // 운영 주문은 토스 결제 취소가 성공해야 환불로 바꾼다(실패하면 402, 주문은 그대로)
     if (!o.test_mode) {
       if (payMode(cfg, o.currency) !== 'live' || !o.pg_key) fail(503, 'payments_unavailable', '결제사 연동이 없어 지금은 환불할 수 없습니다');
-      await tossCancel(cfg, o.pg_key, note || '고객 요청 환불', o.currency);
+      if (isPaypal(cfg)) {
+        // 구독 결제는 그 구독 거래(sale)를, 1회 결제는 캡처를 환불한다. 환불한 구독은 PayPal 에서도 끝낸다(아래 revokeOrder 가 미믹 구독을 끝냄)
+        if (o.pg_key.startsWith(PP_SUB)) {
+          await paypalRefundSub(cfg, o);
+          const sid = o.pg_key.slice(PP_SUB.length).split(':')[0];
+          await paypal(cfg, `/v1/billing/subscriptions/${encodeURIComponent(sid)}/cancel`, { reason: 'Refunded' }).catch((e) => console.error('[billing] PayPal 구독 취소 실패', o.id, e.message));
+        } else await paypal(cfg, `/v2/payments/captures/${encodeURIComponent(o.pg_key)}/refund`, {}, { requestId: `mimic-refund-${o.id}` });
+      } else await tossCancel(cfg, o.pg_key, note || '고객 요청 환불', o.currency);
     }
     const t = now();
     tx(db, () => {

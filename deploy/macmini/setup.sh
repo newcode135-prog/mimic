@@ -94,6 +94,13 @@ $admin_line
 # TOSS_CLIENT_KEY_USD=
 # TOSS_SECRET_KEY_USD=
 # MIMIC_FX_USD_KRW=
+# PayPal 직접 결제(모든 사용자 달러·PayPal). developer.paypal.com > Apps & Credentials 의 REST 앱 키.
+# PAYPAL_ENV=live 가 아니면 샌드박스. 웹훅 주소: https://<도메인>/api/billing/paypal/webhook (PAYPAL_API_BASE 는 보통 비워 둠)
+# MIMIC_PAY_PROVIDER=paypal
+# PAYPAL_CLIENT_ID=
+# PAYPAL_CLIENT_SECRET=
+# PAYPAL_ENV=live
+# PAYPAL_API_BASE=
 # 소셜 로그인
 # GOOGLE_CLIENT_ID=
 # GOOGLE_CLIENT_SECRET=

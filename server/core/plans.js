@@ -50,15 +50,18 @@ export const BT_MAX_FILES = 7000;
 // 해외(한국 외 지역) 사용자는 이 원화 가격을 그날 환율로 나눈 달러(센트 반올림)로 결제한다(Q-2·Q-4, billing 모듈)
 const half = (krw) => Math.round(krw / 200) * 100;
 const tiered = (krw) => ({ global: krw, regional: half(krw) });
+// usd: PayPal 결제(provider=paypal)의 달러 고정가(센트). 2026-11-13 결정: PikPak 미국 App Store 구독가(글로벌 월 $9.99·연 $99.99,
+// 지역 월 $4.99·연 $49.99). 첫 결제 할인·1회권·추가 상품은 위 원화가와 같은 비율로 맞춘 미믹 값(PikPak 웹 달러가는 미확인)
+const usd = (global, regional) => ({ global, regional });
 export const PRODUCTS = [
-  { id: 'sub_month', kind: 'subscription', months: 1, label: '월 구독', labelEn: 'Monthly plan', price: tiered(9587), firstPrice: tiered(6254) },
-  { id: 'sub_year', kind: 'subscription', months: 12, label: '연간 구독', labelEn: 'Annual plan', price: tiered(101591), firstPrice: tiered(62389) },
-  { id: 'once_month', kind: 'once', months: 1, label: '1개월', labelEn: '1 month', price: tiered(10120) },
-  { id: 'once_year', kind: 'once', months: 12, label: '1년', labelEn: '1 year', price: tiered(69323) },
+  { id: 'sub_month', kind: 'subscription', months: 1, label: '월 구독', labelEn: 'Monthly plan', price: tiered(9587), firstPrice: tiered(6254), usd: { price: usd(999, 499), firstPrice: usd(649, 329) } },
+  { id: 'sub_year', kind: 'subscription', months: 12, label: '연간 구독', labelEn: 'Annual plan', price: tiered(101591), firstPrice: tiered(62389), usd: { price: usd(9999, 4999), firstPrice: usd(6149, 3069) } },
+  { id: 'once_month', kind: 'once', months: 1, label: '1개월', labelEn: '1 month', price: tiered(10120), usd: { price: usd(1049, 529) } },
+  { id: 'once_year', kind: 'once', months: 12, label: '1년', labelEn: '1 year', price: tiered(69323), usd: { price: usd(6819, 3409) } },
   // ponytail: 추가 상품 가격은 PikPak 이 공개하지 않아 미믹 자체 값 그대로. PikPak 가격을 확인하면 바꾼다
-  { id: 'storage_10tb_year', kind: 'addon_storage', months: 12, bytes: 10 * TB, label: '추가 저장공간 10TB · 1년', labelEn: 'Extra 10TB storage · 1 year', price: { global: 59000, regional: 29500 } },
-  { id: 'quota_month', kind: 'addon_quota', months: 1, amounts: { cloud: 10 * TB, down: 1 * TB, up: 256 * GB }, label: '추가 전송 쿼터 · 1개월', labelEn: 'Extra transfer quota · 1 month', price: { global: 9900, regional: 4900 } },
-  { id: 'quota_year', kind: 'addon_quota', months: 12, amounts: { cloud: 10 * TB, down: 1 * TB, up: 256 * GB }, label: '추가 전송 쿼터 · 1년', labelEn: 'Extra transfer quota · 1 year', price: { global: 99000, regional: 49000 } },
+  { id: 'storage_10tb_year', kind: 'addon_storage', months: 12, bytes: 10 * TB, label: '추가 저장공간 10TB · 1년', labelEn: 'Extra 10TB storage · 1 year', price: { global: 59000, regional: 29500 }, usd: { price: usd(6149, 3079) } },
+  { id: 'quota_month', kind: 'addon_quota', months: 1, amounts: { cloud: 10 * TB, down: 1 * TB, up: 256 * GB }, label: '추가 전송 쿼터 · 1개월', labelEn: 'Extra transfer quota · 1 month', price: { global: 9900, regional: 4900 }, usd: { price: usd(1029, 509) } },
+  { id: 'quota_year', kind: 'addon_quota', months: 12, amounts: { cloud: 10 * TB, down: 1 * TB, up: 256 * GB }, label: '추가 전송 쿼터 · 1년', labelEn: 'Extra transfer quota · 1 year', price: { global: 99000, regional: 49000 }, usd: { price: usd(10319, 5109) } },
 ];
 // 암호화폐는 국내 규제 검토 전까지 보류(8-4)라 받지 않는다. 받을 수 있는 수단 전체
 export const PAYMENT_METHODS = ['card', 'paypal', 'alipay', 'unionpay'];

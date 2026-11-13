@@ -9,7 +9,19 @@ export const EXPIRY_CHOICES = [
 ];
 const PW_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
 export const genPassword = () => Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => PW_CHARS[n % PW_CHARS.length]).join('');
-export const shareUrl = (path) => location.origin + path;
+// 비공개 미리보기(MIMIC_SITE_PASSWORD) 서버면 공유 링크에 접속 키를 붙인다 — 받는 사람이 키 입력 화면에서 막히지 않게
+let siteKey = null;
+fetch('/api/config')
+  .then((r) => r.json())
+  .then((c) => (siteKey = typeof c.siteKey === 'string' && c.siteKey ? c.siteKey : null))
+  .catch(() => {});
+export const withSiteKey = (url, key = siteKey) => {
+  if (!key) return url;
+  const u = new URL(url, location.origin);
+  u.searchParams.set('key', key);
+  return u.href;
+};
+export const shareUrl = (path) => withSiteKey(location.origin + path);
 export const expiryLabel = (ts) => (ts ? formatDate(ts) : t('영구', 'Never'));
 
 export async function copyText(text) {

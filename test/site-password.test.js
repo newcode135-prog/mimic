@@ -22,8 +22,14 @@ test('접속 키: 링크(?key=)로 한 번에 들어오고, 키 없으면 입력
     assert.equal(go.headers.get('location'), '/drive/all?x=1'); // 키는 주소에서 지운다
     const cookie = cookieOf(go);
     assert.match(cookie, /^mimic_site=/);
-    assert.equal((await fetch(s.url + '/api/config', { headers: { cookie } })).status, 200);
+    const conf = await fetch(s.url + '/api/config', { headers: { cookie } });
+    assert.equal(conf.status, 200);
+    assert.equal((await conf.json()).siteKey, KEY); // 키를 아는 사람에게만: 공유 링크에 붙여 받는 사람이 바로 열게
     assert.equal((await fetch(s.url + '/api/config', { headers: { cookie: 'mimic_site=forged' } })).status, 401);
+    // 공유 링크(?key= 붙은 /s/<토큰>)는 키를 지우고 공유 화면으로 바로 보낸다
+    const sh = await fetch(s.url + '/s/abc123?key=' + KEY, { redirect: 'manual' });
+    assert.equal(sh.status, 302);
+    assert.equal(sh.headers.get('location'), '/s/abc123');
     // 주소가 // 로 시작해도 다른 사이트(//evil.example)로 보내지 않는다
     for (const evil of ['//x//evil.example', '/.//evil.example/', '/x/..//evil.example']) {
       const r = await fetch(s.url + evil + '?key=' + KEY, { redirect: 'manual' });
@@ -54,7 +60,9 @@ test('접속 키 입력 화면: 맞으면 원래 화면으로, 다른 사이트�
 test('접속 키를 설정하지 않으면 지금처럼 바로 열린다', async () => {
   const s = await startServer();
   try {
-    assert.equal((await fetch(s.url + '/api/config')).status, 200);
+    const conf = await fetch(s.url + '/api/config');
+    assert.equal(conf.status, 200);
+    assert.equal((await conf.json()).siteKey, undefined); // 접속 키가 없는 서버는 알려 줄 키도 없다
   } finally {
     await s.close();
   }

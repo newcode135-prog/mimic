@@ -7,7 +7,7 @@ const statusBadge = (st) => h('span', { class: STATUS[st][0] }, t(STATUS[st][1],
 // 신고 처리로 차단된 공유(J-01): 배지와 이의제기 링크(대상 칸에 이 공유 링크를 채워 연다)
 const blockedNotice = (s) => [
   h('span', { class: 'badge danger', title: t('신고 처리로 이 공유의 파일이 차단되어 받는 사람이 열거나 저장할 수 없어요', 'Files in this share were blocked after a report, so recipients cannot open or save them') }, t('차단됨', 'Blocked')),
-  h('a', { class: 'small', href: `/copyright?tab=appeal&type=share&target=${encodeURIComponent(shareUrl(s.url))}` }, t('이의제기', 'Appeal')),
+  h('a', { class: 'small', href: `/copyright?tab=appeal&type=share&target=${encodeURIComponent(location.origin + s.url)}` }, t('이의제기', 'Appeal')),
 ];
 const titleOf = (s) => (s.fileIds?.length > 1 ? `${s.title} ${t(`외 ${s.fileIds.length - 1}개`, `+${s.fileIds.length - 1}`)}` : s.title);
 
