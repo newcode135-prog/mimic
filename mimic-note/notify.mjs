@@ -98,9 +98,9 @@ const schemaErrors = (s) => (s.error ? [s.error] : [...validateMembers(s.members
 export function loadLedger(file) {
   try {
     const l = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return { verifiedSha: l.verifiedSha || null, members: l.members || {}, alerts: l.alerts || [], flagged: l.flagged || [] };
+    return { verifiedSha: l.verifiedSha || null, owner: l.owner || null, members: l.members || {}, alerts: l.alerts || [], flagged: l.flagged || [] };
   } catch {
-    return { verifiedSha: null, members: {}, alerts: [], flagged: [] };
+    return { verifiedSha: null, owner: null, members: {}, alerts: [], flagged: [] };
   }
 }
 
@@ -127,25 +127,39 @@ export async function runNotify({ env, git, gh, send, ledger, now = () => new Da
 
   let verified = valid(ledger.verifiedSha) ? ledger.verifiedSha : null;
   let halted = false;
-  // 장부에 확인된 커밋이 있는데 main 에 없으면(force push 로 지워져 받아지지도 않은 경우 포함) 멈춘다(fail closed)
-  if (ledger.verifiedSha && (!verified || !git.isAncestor(verified, head))) {
-    const ok = (event === 'push' || event === 'workflow_dispatch') && await isRepoAdmin(env.ACTOR);
-    report({ kind: 'history-rewrite', sha: head, actor: env.ACTOR, detail: [`main 기록이 다시 쓰였습니다(확인된 커밋 ${String(ledger.verifiedSha).slice(0, 7)} 가 main 에 없음)`, ok ? '저장소 관리자 실행이라 지금 main 을 새 기준으로 잡았습니다' : '저장소 주인이 이 워크플로를 실행(push 또는 수동 실행)할 때까지 알림을 보내지 않습니다'] });
-    if (ok) verified = head;
-    else halted = true;
+  // 기준(확인된 커밋)이 없거나 main 에 없으면(처음 실행·장부 유실·force push) 멈춘다(fail closed).
+  // 다시 시작할 수 있는 건 저장소 관리자가 "지금 main 그대로"를 실행한 경우뿐: push 는 그 push 가 main 의 끝일 때, 또는 수동 실행.
+  if (!verified || !git.isAncestor(verified, head)) {
+    const ok = (event === 'push' ? env.AFTER_SHA === head : event === 'workflow_dispatch') && await isRepoAdmin(env.ACTOR);
+    const before = event === 'push' && valid(env.BEFORE_SHA) && git.isAncestor(env.BEFORE_SHA, head) && !schemaErrors(snapshot(git, env.BEFORE_SHA)).length ? env.BEFORE_SHA : null;
+    if (!ledger.verifiedSha && ok) verified = before || head; // 처음 실행·장부 없음: 관리자 실행이면 조용히 시작(그 push 자체는 확인)
+    else {
+      report({
+        kind: ledger.verifiedSha ? 'history-rewrite' : 'no-ledger',
+        sha: head,
+        actor: env.ACTOR,
+        detail: [ledger.verifiedSha ? `main 기록이 다시 쓰였습니다(확인된 커밋 ${String(ledger.verifiedSha).slice(0, 7)} 가 main 에 없음)` : '발송 장부(확인된 기준)가 없습니다',
+          ok ? '저장소 관리자 실행이라 지금 main 을 새 기준으로 잡았습니다' : '저장소 주인 계정이 이 워크플로를 한 번 실행할 때까지 알림을 보내지 않습니다(gh workflow run mimic-checkin.yml -R newcode135-prog/mimic)'],
+      });
+      if (ok) verified = head;
+      else halted = true;
+    }
   }
-  if (!verified) verified = event === 'push' && valid(env.BEFORE_SHA) && git.isAncestor(env.BEFORE_SHA, head) ? env.BEFORE_SHA : head;
 
   // 1) 확인된 커밋 이후를 push 단위로 확인
   if (!halted && verified !== head) {
     const pushes = await gh.pushes();
     if (event === 'push' && env.AFTER_SHA) pushes.set(env.AFTER_SHA, env.ACTOR);
     let base = snapshot(git, verified);
+    let prev = verified;
     for (const c of git.firstParent(verified, head)) {
       if (!pushes.has(c)) continue;
       const actor = pushes.get(c);
       covered.push(c);
+      const touched = changed(prev, c); // 이 push 자체가 데이터를 바꿨나
+      prev = c;
       if (!changed(verified, c)) { verified = c; base = snapshot(git, c); continue; }
+      if (!touched) continue; // 데이터를 안 건드린 push 는 앞의 미확인 변경을 이 사람 탓으로도, 승인으로도 치지 않는다
       const next = snapshot(git, c);
       const bad = schemaErrors(next);
       if (bad.length) { report({ kind: 'schema', sha: c, actor, detail: bad.slice(0, 10) }); continue; }
@@ -160,8 +174,8 @@ export async function runNotify({ env, git, gh, send, ledger, now = () => new Da
   }
 
   // 2) 보낼 내용은 항상 "확인된 상태"에서 만든다(확인 안 된 변경은 보내지 않음)
-  const cur = snapshot(git, verified);
-  const curBad = schemaErrors(cur);
+  const cur = halted ? { db: { nextId: 1, missions: [] }, members: [] } : snapshot(git, verified);
+  const curBad = halted ? [] : schemaErrors(cur);
   if (curBad.length) report({ kind: 'schema', sha: verified, detail: curBad.slice(0, 10) });
   for (const [id, s] of Object.entries(ledger.members)) if (s.pending) candidates.add(id);
   let forced = null;
@@ -207,7 +221,8 @@ export async function runNotify({ env, git, gh, send, ledger, now = () => new Da
   }
 
   // 4) 새 문제(권한 없음·깨진 데이터·기록 다시 쓰기) → 대표관리자에게 경고(같은 커밋은 한 번만)
-  const ownerMember = cur.members.find((m) => m.role === 'owner');
+  // 경고 받을 대표관리자는 확인된 명부 기준(멈춘 실행은 지난번에 확인된 대표관리자) — 다시 쓰인 명부를 믿지 않는다
+  const ownerMember = halted ? (ledger.owner ? { id: ledger.owner } : null) : cur.members.find((m) => m.role === 'owner');
   const ownerChat = ownerMember && chatIdFor(ownerMember.id, env);
   for (const p of problems.filter((x) => x.sha && !x.known && !ledger.alerts.includes(x.sha))) {
     if (!token || !ownerChat) continue;
@@ -222,7 +237,10 @@ export async function runNotify({ env, git, gh, send, ledger, now = () => new Da
     }
   }
 
-  if (!halted) ledger.verifiedSha = verified; // 멈춘 실행은 기준을 바꾸지 않는다
+  if (!halted && !curBad.length) { // 멈춘 실행·깨진 상태는 기준으로 저장하지 않는다
+    ledger.verifiedSha = verified;
+    if (ownerMember) ledger.owner = ownerMember.id;
+  }
   ledger.flagged = [...flagged].slice(-100);
   return { results, problems, covered, ledger, head, verified, halted };
 }

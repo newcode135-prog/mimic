@@ -270,7 +270,7 @@ const files = (db, members = M) => ({ [DB_FILE]: JSON.stringify(db), [MEMBERS_FI
 const CHATS = { TELEGRAM_CHAT_ID_CHANGMIN: '1001', TELEGRAM_CHAT_ID_MINHO: '1002', TELEGRAM_CHAT_ID_YURI: '1003', TELEGRAM_CHAT_ID_NATHAN: '1004', TELEGRAM_CHAT_ID_LUCAS: '1005' };
 const ENV = { TELEGRAM_BOT_TOKEN: '123:abc', GITHUB_REPOSITORY_OWNER: 'newcode135-prog', ...CHATS };
 const ghOf = (pushes) => ({ pushes: async () => new Map(Object.entries(pushes)), isRepoAdmin: async (l) => l === 'newcode135-prog' });
-const newLedger = () => ({ verifiedSha: null, members: {}, alerts: [], flagged: [] });
+const newLedger = (verifiedSha = null) => ({ verifiedSha, owner: 'changmin', members: {}, alerts: [], flagged: [] });
 const pushEnv = (git, before, after, actor, extra = {}) => ({ ...ENV, EVENT_NAME: 'push', BEFORE_SHA: before, AFTER_SHA: after, ACTOR: actor, ...extra });
 const statuses = (r) => Object.fromEntries(r.results.map((x) => [x.member, x.status]));
 
@@ -288,7 +288,7 @@ function minhoSetup() {
 test('Actions 시나리오 4·13: 민호 미션이 main 에 반영되면 민호 chat id 로만, 민호 미션만 보낸다', async () => {
   const { git, c0, c1, runs, db1 } = minhoSetup();
   const tg = fakeTelegram();
-  const ledger = newLedger();
+  const ledger = newLedger(c0);
   const r = await runNotify({ env: pushEnv(git, c0, c1, 'darrenpual'), git, gh: ghOf(runs), send: tg.send, ledger, now: () => T });
   assert.deepEqual(r.problems, []);
   assert.deepEqual(statuses(r), { minho: 'sent' });
@@ -310,7 +310,7 @@ test('Actions 시나리오 4·13: 민호 미션이 main 에 반영되면 민호 
 test('Actions 시나리오 8: 변경 없이 다시 실행하면 보내지 않는다(재실행·10분 정기 검사·같은 내용 수동 요청), force 는 다시 보냄', async () => {
   const { git, c0, c1, runs } = minhoSetup();
   const tg = fakeTelegram();
-  const ledger = newLedger();
+  const ledger = newLedger(c0);
   const opts = { git, gh: ghOf(runs), send: tg.send, ledger, now: () => T };
   await runNotify({ ...opts, env: pushEnv(git, c0, c1, 'darrenpual') });
   const rerun = await runNotify({ ...opts, env: pushEnv(git, c0, c1, 'darrenpual') });
@@ -334,7 +334,7 @@ test('Actions 시나리오 11: 미연결 팀원은 보류만 하고 다른 팀�
   setMissions(db1, '루카스', parseMissionList('1. 루카스 업무'), 'changmin', M, T);
   const c1 = git.add(files(db1));
   const tg = fakeTelegram();
-  const ledger = newLedger();
+  const ledger = newLedger(c0);
   const { TELEGRAM_CHAT_ID_LUCAS, ...noLucas } = ENV;
   const r = await runNotify({ env: { ...noLucas, EVENT_NAME: 'push', BEFORE_SHA: c0, AFTER_SHA: c1, ACTOR: 'darrenpual' }, git, gh: ghOf({ [c1]: 'darrenpual' }), send: tg.send, ledger, now: () => T });
   assert.deepEqual(statuses(r), { minho: 'sent', lucas: 'unconnected' });
@@ -348,7 +348,7 @@ test('Actions 시나리오 11: 미연결 팀원은 보류만 하고 다른 팀�
 test('Actions: 봇 토큰이 없으면 아무것도 보내지 않고 보류(성공으로 치지 않음)', async () => {
   const { git, c0, c1, runs } = minhoSetup();
   const tg = fakeTelegram();
-  const r = await runNotify({ env: pushEnv(git, c0, c1, 'darrenpual', { TELEGRAM_BOT_TOKEN: '' }), git, gh: ghOf(runs), send: tg.send, ledger: newLedger(), now: () => T });
+  const r = await runNotify({ env: pushEnv(git, c0, c1, 'darrenpual', { TELEGRAM_BOT_TOKEN: '' }), git, gh: ghOf(runs), send: tg.send, ledger: newLedger(c0), now: () => T });
   assert.deepEqual(statuses(r), { minho: 'unconfigured' });
   assert.equal(tg.sent.length, 0);
 });
@@ -361,7 +361,7 @@ test('Actions 시나리오 12: 텔레그램 오류 — 한 명이 실패해도 �
   setMissions(db1, '민호', list3, 'changmin', M, T);
   setMissions(db1, '유리', parseMissionList('1. 유리 업무'), 'changmin', M, T);
   const c1 = git.add(files(db1));
-  const ledger = newLedger();
+  const ledger = newLedger(c0);
   const blocked = Object.assign(new Error('텔레그램 sendMessage 실패: Forbidden: bot was blocked by the user'), { code: 403 });
   const bad = fakeTelegram({ fail: { 1003: blocked } });
   const r = await runNotify({ env: pushEnv(git, c0, c1, 'darrenpual'), git, gh: ghOf({ [c1]: 'darrenpual' }), send: bad.send, ledger, now: () => T });
@@ -376,14 +376,14 @@ test('Actions 시나리오 12: 텔레그램 오류 — 한 명이 실패해도 �
 
 test('Actions 시나리오 14(모의): sendMessage 응답의 chat id 가 다르면 성공으로 치지 않는다', async () => {
   const { git, c0, c1, runs } = minhoSetup();
-  const r = await runNotify({ env: pushEnv(git, c0, c1, 'darrenpual'), git, gh: ghOf(runs), send: async () => ({ message_id: 1, chat: { id: 999 } }), ledger: newLedger(), now: () => T });
+  const r = await runNotify({ env: pushEnv(git, c0, c1, 'darrenpual'), git, gh: ghOf(runs), send: async () => ({ message_id: 1, chat: { id: 999 } }), ledger: newLedger(c0), now: () => T });
   assert.deepEqual(statuses(r), { minho: 'failed' });
 });
 
 test('Actions 시나리오 10: 권한 없는 push 는 알리지 않고 실패 표시 + 대표관리자에게 경고(한 번만)', async () => {
   const { git, c0, c1, runs, db1 } = minhoSetup();
   const tg = fakeTelegram();
-  const ledger = newLedger();
+  const ledger = newLedger(c0);
   await runNotify({ env: pushEnv(git, c0, c1, 'darrenpual'), git, gh: ghOf(runs), send: tg.send, ledger, now: () => T });
   const db2 = clone(db1);
   db2.missions[0].title = '네이뜬이 몰래 바꿈';
@@ -403,7 +403,7 @@ test('Actions 시나리오 10: 권한 없는 push 는 알리지 않고 실패 �
 test('Actions 리뷰 회귀: 권한 없는 변경은 확인된 상태가 되지 않아 수동 요청·보류 재시도에도 나가지 않고, 관리자 이상이 다시 저장해야 반영', async () => {
   const { git, c0, c1, runs, db1 } = minhoSetup();
   const tg = fakeTelegram();
-  const ledger = newLedger();
+  const ledger = newLedger(c0);
   await runNotify({ env: pushEnv(git, c0, c1, 'darrenpual'), git, gh: ghOf(runs), send: tg.send, ledger, now: () => T });
   const db2 = clone(db1);
   db2.missions[0].title = 'TAMPERED';
@@ -436,7 +436,7 @@ test('Actions 리뷰 회귀: 권한 없는 변경은 확인된 상태가 되지 
 test('Actions 리뷰 회귀: 깨진 데이터와 함께 자기 권한을 올린 뒤 고쳐도, 확인된 명부 기준이라 권한 상승이 막힌다', async () => {
   const { git, c0, c1, runs, db1 } = minhoSetup();
   const tg = fakeTelegram();
-  const ledger = newLedger();
+  const ledger = newLedger(c0);
   await runNotify({ env: pushEnv(git, c0, c1, 'darrenpual'), git, gh: ghOf(runs), send: tg.send, ledger, now: () => T });
   const promoted = M.map((m) => (m.id === 'nathan' ? { ...m, role: 'admin' } : m));
   const db2 = clone(db1);
@@ -458,7 +458,7 @@ test('Actions 리뷰 회귀: 깨진 데이터와 함께 자기 권한을 올린 
 test('Actions 리뷰 회귀: [skip ci] push 도 활동 기록으로 그 push 한 사람에게 귀속되어 경고된다', async () => {
   const { git, c0, c1, runs, db1 } = minhoSetup();
   const tg = fakeTelegram();
-  const ledger = newLedger();
+  const ledger = newLedger(c0);
   await runNotify({ env: pushEnv(git, c0, c1, 'darrenpual'), git, gh: ghOf(runs), send: tg.send, ledger, now: () => T });
   const db2 = clone(db1);
   db2.missions[1].title = 'skip-ci 로 몰래 바꿈';
@@ -492,7 +492,7 @@ test('Actions: 저장소 주인 계정은 명부 변경도 통과, 깨진 데이
   const git = fakeGit([files(db0, M.map((m) => ({ ...m, github: null })))]);
   const c0 = git.head();
   const c1 = git.add(files(db0));
-  const ledger = newLedger();
+  const ledger = newLedger(c0);
   const ok = await runNotify({ env: pushEnv(git, c0, c1, 'newcode135-prog'), git, gh: ghOf({ [c1]: 'newcode135-prog' }), send: fakeTelegram().send, ledger, now: () => T });
   assert.deepEqual(ok.problems, []);
   const c2 = git.add({ [DB_FILE]: '{ 깨진 json' });
@@ -501,8 +501,75 @@ test('Actions: 저장소 주인 계정은 명부 변경도 통과, 깨진 데이
   assert.deepEqual(broken.problems.map((p) => p.kind), ['schema']);
   assert.deepEqual(statuses(broken), { minho: 'sent', changmin: 'alert' });
   assert.equal(ledger.verifiedSha, c1);
-  const unknown = await runNotify({ env: { ...ENV, EVENT_NAME: 'workflow_dispatch', INPUT_MEMBER: '철수' }, git: fakeGit([files(db0)]), gh: ghOf({}), send: tg.send, ledger: newLedger(), now: () => T });
+  const g2 = fakeGit([files(db0)]);
+  const unknown = await runNotify({ env: { ...ENV, EVENT_NAME: 'workflow_dispatch', INPUT_MEMBER: '철수' }, git: g2, gh: ghOf({}), send: tg.send, ledger: newLedger(g2.head()), now: () => T });
   assert.equal(unknown.problems[0].kind, 'unknown-member');
+});
+
+test('Actions 2차 리뷰 회귀: 장부가 없으면 저장소 관리자가 "지금 main 그대로" 실행할 때만 시작(처음 배포 포함)', async () => {
+  const { git, c0, c1 } = minhoSetup();
+  const tg = fakeTelegram();
+  // 장부 없음 + 정기 검사·팀원 수동 요청 → 멈춤(경고 받을 대표관리자를 모르면 경고도 안 함)
+  const empty1 = { verifiedSha: null, owner: null, members: {}, alerts: [], flagged: [] };
+  const sched = await runNotify({ env: { ...ENV, EVENT_NAME: 'schedule', ACTOR: 'newcode135-prog' }, git, gh: ghOf({ [c1]: 'darrenpual' }), send: tg.send, ledger: empty1, now: () => T });
+  assert.deepEqual([sched.halted, sched.problems[0].kind], [true, 'no-ledger']);
+  const member = await runNotify({ env: { ...ENV, EVENT_NAME: 'workflow_dispatch', ACTOR: 'nathan-gh', INPUT_MEMBER: 'minho' }, git, gh: ghOf({}), send: tg.send, ledger: empty1, now: () => T });
+  assert.equal(member.halted, true);
+  assert.equal(empty1.verifiedSha, null);
+  assert.equal(tg.sent.length, 0);
+  // 저장소 관리자의 push 인데 main 끝이 그 push 가 아니면(그 뒤 누가 또 push) 시작하지 않음
+  const stale = await runNotify({ env: pushEnv(git, c0, c0, 'newcode135-prog'), git, gh: ghOf({ [c1]: 'nathan-gh' }), send: tg.send, ledger: empty1, now: () => T });
+  assert.equal(stale.halted, true);
+  // 저장소 관리자의 push 가 main 끝이면 조용히 시작하고, 그 push 자체는 확인·발송
+  const boot = { verifiedSha: null, owner: null, members: {}, alerts: [], flagged: [] };
+  const ok = await runNotify({ env: pushEnv(git, c0, c1, 'newcode135-prog'), git, gh: ghOf({ [c1]: 'newcode135-prog' }), send: tg.send, ledger: boot, now: () => T });
+  assert.deepEqual([ok.halted, ok.problems], [false, []]);
+  assert.deepEqual(statuses(ok), { minho: 'sent' });
+  assert.equal(boot.verifiedSha, c1);
+  assert.equal(boot.owner, 'changmin');
+});
+
+test('Actions 2차 리뷰 회귀: 데이터를 안 건드린 push 는 앞의 미확인 변경을 떠안지도, 승인하지도 않는다', async () => {
+  const { git, c0, c1, runs, db1 } = minhoSetup();
+  const tg = fakeTelegram();
+  const ledger = newLedger(c0);
+  await runNotify({ env: pushEnv(git, c0, c1, 'darrenpual'), git, gh: ghOf(runs), send: tg.send, ledger, now: () => T });
+  const db2 = clone(db1);
+  db2.missions[0].title = 'TAMPERED';
+  const c2 = git.add(files(db2));
+  const c3 = git.add({ 'README.md': '루카스 문서 수정' });
+  const c4 = git.add({ 'mimic-note/uploads/x.md': '창민 업로드' });
+  const pushes = { ...runs, [c2]: 'nathan-gh', [c3]: 'lucas-gh', [c4]: 'darrenpual' };
+  const r = await runNotify({ env: pushEnv(git, c3, c4, 'darrenpual'), git, gh: ghOf(pushes), send: tg.send, ledger, now: () => T });
+  assert.deepEqual(r.problems.map((p) => [p.kind, p.actor]), [['unauthorized', 'nathan-gh']], '루카스를 탓하지 않는다');
+  assert.equal(ledger.verifiedSha, c1, '창민의 데이터 아닌 push 로 승인되지 않는다');
+  assert.ok(!tg.sent.some((s) => s.text.includes('TAMPERED')));
+});
+
+test('Actions 2차 리뷰 회귀: 멈춘 실행의 경고는 지난번에 확인된 대표관리자에게(다시 쓰인 명부를 믿지 않음)', async () => {
+  const promoted = M.map((m) => (m.id === 'nathan' ? { ...m, role: 'owner' } : m.id === 'changmin' ? { ...m, role: 'admin' } : m));
+  const git = fakeGit([files(empty(), promoted)]);
+  const tg = fakeTelegram();
+  const ledger = { verifiedSha: 'e'.repeat(40), owner: 'changmin', members: {}, alerts: [], flagged: [] };
+  const r = await runNotify({ env: { ...ENV, EVENT_NAME: 'schedule' }, git, gh: ghOf({}), send: tg.send, ledger, now: () => T });
+  assert.equal(r.halted, true);
+  assert.deepEqual(tg.sent.map((s) => s.chatId), ['1001']);
+  assert.equal(ledger.verifiedSha, 'e'.repeat(40));
+});
+
+test('Actions 2차 리뷰 회귀: 깨진 main 은 처음 시작 기준으로도 저장하지 않는다', async () => {
+  const git = fakeGit([files(empty())]);
+  const c0 = git.head();
+  const c1 = git.add({ [DB_FILE]: '{ 깨진' });
+  const boot = { verifiedSha: null, owner: null, members: {}, alerts: [], flagged: [] };
+  const r = await runNotify({ env: { ...ENV, EVENT_NAME: 'workflow_dispatch', ACTOR: 'newcode135-prog' }, git, gh: ghOf({ [c1]: 'darrenpual' }), send: fakeTelegram().send, ledger: boot, now: () => T });
+  assert.ok(r.problems.some((p) => p.kind === 'schema'));
+  assert.equal(boot.verifiedSha, null);
+  assert.ok(c0);
+});
+
+test('2차 리뷰 회귀: 번호 없는 목록의 "미션설정" 머리줄도 버린다', () => {
+  assert.deepEqual(parseMissionList('미션설정\n로그인 UI\nAPI 테스트').map((x) => x.title), ['로그인 UI', 'API 테스트']);
 });
 
 // ---------------- 텔레그램 API ----------------

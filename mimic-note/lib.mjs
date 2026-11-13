@@ -212,7 +212,7 @@ export const normTitle = (s) => String(s || '').normalize('NFC').trim().replace(
 const ITEM_RE = /^(\s*)(?:\d{1,3}\s*[.)．](?!\d)|\d{1,3}\s*번[.:]?|\d️?⃣|🔟|[-*•·])\s*(\S.*)$/u;
 export function parseMissionList(text) {
   const lines = String(text || '').replace(/\r/g, '').split('\n').filter((l) => l.trim());
-  if (lines.length && !ITEM_RE.test(lines[0]) && /^\S+\s+미션\s*(설정|추가)$/.test(lines[0].trim())) lines.shift();
+  if (lines.length && !ITEM_RE.test(lines[0]) && /^(\S+\s+)?미션\s*(설정|추가)$/.test(lines[0].trim())) lines.shift();
   const numbered = lines.some((l) => ITEM_RE.test(l));
   const items = [];
   let level = null;
