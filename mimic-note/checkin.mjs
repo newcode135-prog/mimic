@@ -35,7 +35,7 @@ export function checkinText(member, db = loadDb(), premise = loadPremise(), auto
     '',
     formatMissions(member, open),
   ];
-  if (open.length) lines.push('', `미션을 끝내면: node mimic-note/mission.mjs done ${member.id} <번호>  (그 뒤 git commit·push)`);
+  if (open.length) lines.push('', `미션을 끝내면: node mimic-note/mission.mjs done ${member.id} <번호>  (GitHub 에 바로 저장되고 텔레그램도 갱신)`);
   else lines.push('', '미션은 관리자가 등록합니다. 등록되면 같은 암호구로 다시 체크인하세요.');
   const members = loadMembers();
   const others = othersLowMissions(db, member, members);
