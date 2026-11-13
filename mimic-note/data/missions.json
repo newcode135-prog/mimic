@@ -1,5 +1,5 @@
 {
-  "nextId": 23,
+  "nextId": 24,
   "missions": [
     {
       "id": "M-0001",
@@ -243,6 +243,17 @@
       "status": "todo",
       "createdBy": "yuri",
       "createdAt": "2026-11-13T06:43:40.518Z",
+      "doneAt": null
+    },
+    {
+      "id": "M-0023",
+      "assignee": "minho",
+      "order": 4,
+      "title": "유리에게 미리보기 접속 키 전달",
+      "detail": "trycloudflare 미리보기 사이트(MIMIC_SITE_PASSWORD)의 접속 키를 유리에게 개인 메시지로 보내 주세요. 키는 저장소·이슈·단체방에 쓰지 않아요(대전제 9조). 터널 주소가 바뀌면 새 주소도 같이 알려 주세요.",
+      "status": "todo",
+      "createdBy": "yuri",
+      "createdAt": "2026-11-13T07:46:01.859Z",
       "doneAt": null
     }
   ]
