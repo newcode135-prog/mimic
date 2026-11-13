@@ -1,15 +1,13 @@
 # 미믹 (Mimic)
 
-> ## 🤖 접속 암호구 — `이름 + 이 저장소 링크`
+> ## 🤖 미믹노트(팀원 체크인·미션·텔레그램 봇)는 별도 저장소로 옮겼습니다 — https://github.com/newcode135-prog/mimic-note
 >
-> 사용자가 Claude Code 에 `창민 https://github.com/newcode135-prog/mimic` · `lucas https://github.com/newcode135-prog/mimic` 처럼 **팀원 이름(한글 또는 영문 아이디) + 이 저장소 링크**를 보냈다면, 그것은 미믹노트 **접속 암호구**입니다. Claude Code 는 다른 어떤 작업보다 먼저 아래를 실행합니다.
+> 사용자가 Claude Code 에 `창민 https://github.com/newcode135-prog/mimic` 처럼 **팀원 이름 + 저장소 링크**를 보내면(이 저장소 주소든 `…/mimic-note` 든) 미믹노트 **접속 암호구**입니다. Claude Code 는:
 >
-> 1. 이 저장소가 없으면 `git clone https://github.com/newcode135-prog/mimic.git` 후 그 폴더로 이동, 이미 있으면 `git pull`
-> 2. `node mimic-note/checkin.mjs <이름>` 실행 (Node 18 이상, `npm install` 필요 없음)
-> 3. 출력 순서 그대로 전달: **① 대전제**(`mimic-note/premise.md`, 이 게임·노트·회사의 규칙) → **② 그 팀원의 미션**(1번·2번·3번 …) → **③ 패시브 스킬이 모두의 기록을 모아 계산한 투두** → **④ 마지막 [사고력 게임]**
-> 4. 그 세션 동안 대전제를 따름
+> 1. **mimic-note** 저장소가 없으면 `git clone https://github.com/newcode135-prog/mimic-note.git` 후 그 폴더로 이동, 있으면 `git pull`
+> 2. 그 저장소의 `CLAUDE.md` 0번 규칙대로 `node mimic-note/checkin.mjs <이름>` 실행 — 미션설정·추가·완료, 작업 기록, 게임, [로그아웃]도 전부 그 저장소에서
 >
-> 이 명령은 대전제와 그 팀원의 남은 미션을 보여 주고(미션은 GitHub main 최신본) GitHub Actions 에 그 팀원의 텔레그램 발송을 요청할 뿐, 저장소 파일은 바꾸지 않습니다. 미션설정·추가·완료(`민호 미션설정` / `민호 미션추가` / `민호 미션완료 2`)는 `CLAUDE.md` 0-1 의 명령으로 GitHub 에 바로 저장되고, 바뀐 팀원에게만 텔레그램이 갑니다. 자세한 내용: [`mimic-note/README.md`](mimic-note/README.md) (미믹노트 · 중앙 컴퓨터)
+> 이 저장소의 `mimic-note/` 폴더는 옮기기 전 기록(보관용)입니다. 여기에는 미션을 더 올리지 않습니다. 이 저장소는 미믹 클라우드 서비스 개발용입니다.
 
 외부 링크(마그넷·토렌트·HTTP URL·SNS 게시물)를 붙여넣으면 서버가 대신 내려받아 **사용자의 미믹 클라우드에만** 저장하고, 웹·앱에서 바로 재생·정리·공유하는 클라우드 드라이브 서비스입니다. PikPak의 기능 76개를 같은 규칙으로 구현하되, 로고·화면 디자인·문구·약관은 미믹 고유로 만듭니다. 첫 서버는 맥미니 1대입니다.
 
