@@ -1,5 +1,5 @@
 {
-  "nextId": 16,
+  "nextId": 19,
   "missions": [
     {
       "id": "M-0001",
@@ -166,6 +166,39 @@
       "status": "todo",
       "createdBy": "changmin",
       "createdAt": "2026-11-13T03:33:13.549Z",
+      "doneAt": null
+    },
+    {
+      "id": "M-0016",
+      "assignee": "lucas",
+      "order": 1,
+      "title": "Install Claude Code, Node 18+ and git — follow step 1 of mimic-note/guides/lucas-onboarding.md, then run `claude` and sign in.",
+      "detail": "",
+      "status": "todo",
+      "createdBy": "changmin",
+      "createdAt": "2026-11-13T06:30:35.825Z",
+      "doneAt": null
+    },
+    {
+      "id": "M-0017",
+      "assignee": "lucas",
+      "order": 2,
+      "title": "First login (check-in) — paste the prompt from step 2 of the guide into Claude Code. Read the Premise first (Claude Code translates it into English). No invite needed.",
+      "detail": "",
+      "status": "todo",
+      "createdBy": "changmin",
+      "createdAt": "2026-11-13T06:30:35.825Z",
+      "doneAt": null
+    },
+    {
+      "id": "M-0018",
+      "assignee": "lucas",
+      "order": 3,
+      "title": "Accept the GitHub invite (ravityl) — from the email or github.com/newcode135-prog/mimic/invitations. Needed to push (e.g. mark missions done).",
+      "detail": "",
+      "status": "todo",
+      "createdBy": "changmin",
+      "createdAt": "2026-11-13T06:30:35.825Z",
       "doneAt": null
     }
   ]
