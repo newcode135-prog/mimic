@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { NOTE_DIR, loadMembers, findMember, loadDb, openMissions, doneMissions, formatMissions, loadPremise, readEnv, chatIdFor, telegramApi } from './lib.mjs';
+import { NOTE_DIR, loadMembers, findMember, loadDb, openMissions, doneMissions, formatMissions, othersLowMissions, loadPremise, readEnv, chatIdFor, telegramApi } from './lib.mjs';
 import { loadGames, latestGame, formatGame } from './game.mjs';
 import { HOME_DIR } from './passive/compress.mjs';
 
@@ -41,7 +41,13 @@ export function checkinText(member, db = loadDb(), premise = loadPremise(), auto
     formatMissions(member, open),
   ];
   if (open.length) lines.push('', `미션을 끝내면: node mimic-note/mission.mjs done ${member.id} <번호>  (그 뒤 git commit·push)`);
-  else lines.push('', '미션은 관리자(창민·민호)가 등록합니다. 등록되면 같은 암호구로 다시 체크인하세요.');
+  else lines.push('', '미션은 관리자가 등록합니다. 등록되면 같은 암호구로 다시 체크인하세요.');
+  const members = loadMembers();
+  const others = othersLowMissions(db, member, members);
+  if (others.length) {
+    lines.push('', '↪ 다른 관리자의 후순위 미션 (맡을 수 있으면 그 관리자에게 말하기)');
+    others.forEach((m) => lines.push(`• [${m.id}] ${members.find((x) => x.id === m.assignee)?.name || m.assignee} — ${m.title}`));
+  }
   const mine = auto?.players?.[member.id];
   lines.push('', `━━━━━━━━ ③ 패시브 스킬 [자동 다운로드] — 모두의 기록을 모은 투두${auto?.generatedAt ? ` (${auto.generatedAt.slice(0, 16).replace('T', ' ')} UTC 계산)` : ''} ━━━━━━━━`, '');
   if (!mine) lines.push('아직 계산된 결과가 없습니다(타이머가 돌기 시작하면 10분마다 갱신).');

@@ -85,7 +85,8 @@ export function saveDb(db, dir = NOTE_DIR) {
   fs.renameSync(tmp, file);
 }
 
-const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id);
+// 후순위(priority: 'low')는 맨 뒤로. 그다음 order 순.
+const byOrder = (a, b) => (a.priority === 'low') - (b.priority === 'low') || (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id);
 
 // 그 팀원의 아직 끝나지 않은 미션(번호 순). 화면의 1번·2번·3번이 이 순서다.
 export function openMissions(db, memberId) {
@@ -131,12 +132,31 @@ export function completeMission(db, memberId, ref, now = new Date().toISOString(
   return mission;
 }
 
+// 후순위로 내리기(관리자만). 후순위 미션은 그 사람 목록 맨 뒤로 가고, 다른 관리자 체크인에도 뜬다.
+export function setLowPriority(db, memberId, ref, by, members) {
+  const author = requireMember(by, members);
+  if (!ADMIN_ROLES.has(author.role)) throw new Error(`${author.name}님은 관리자가 아니라 우선순위를 바꿀 수 없습니다.`);
+  const open = openMissions(db, memberId);
+  const key = String(ref || '').trim().toUpperCase();
+  const mission = /^\d+$/.test(key) ? open[Number(key) - 1] : open.find((m) => m.id === key);
+  if (!mission) throw new Error(`미션을 찾지 못했습니다: "${ref}"`);
+  mission.priority = 'low';
+  return mission;
+}
+
+// 관리자에게 보여 줄 '다른 관리자의 후순위 미션'.
+export function othersLowMissions(db, member, members) {
+  if (!ADMIN_ROLES.has(member.role)) return [];
+  const admins = new Set(members.filter((m) => ADMIN_ROLES.has(m.role) && m.id !== member.id).map((m) => m.id));
+  return db.missions.filter((m) => m.priority === 'low' && m.status !== 'done' && admins.has(m.assignee));
+}
+
 // Claude Code 가 그대로 전달하는 문구.
 export function formatMissions(member, missions) {
   if (!missions.length) return `${member.name}님, 지금 남은 미션이 없습니다.`;
   return missions
     .map((m, i) => {
-      const head = `${member.name}님의 미션 ${i + 1}번은 ${m.title}`;
+      const head = `${member.name}님의 미션 ${i + 1}번은 ${m.title}${m.priority === 'low' ? ' (후순위)' : ''}`;
       return m.detail ? `${head}\n${m.detail.split('\n').map((l) => `   ${l}`).join('\n')}` : head;
     })
     .join('\n\n');

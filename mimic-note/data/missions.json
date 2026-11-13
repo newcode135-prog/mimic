@@ -43,7 +43,8 @@
       "status": "todo",
       "createdBy": "changmin",
       "createdAt": "2026-11-12T22:32:39.704Z",
-      "doneAt": null
+      "doneAt": null,
+      "priority": "low"
     },
     {
       "id": "M-0005",
@@ -54,7 +55,8 @@
       "status": "todo",
       "createdBy": "changmin",
       "createdAt": "2026-11-12T22:32:39.729Z",
-      "doneAt": null
+      "doneAt": null,
+      "priority": "low"
     },
     {
       "id": "M-0006",

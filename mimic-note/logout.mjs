@@ -131,9 +131,10 @@ export function upload(member, file, { dir = NOTE_DIR, home = HOME_DIR(), push =
   let pushed = 'skipped';
   if (push) {
     const root = path.resolve(dir, '..');
-    const rel = path.relative(root, path.join(dir, 'data', 'players', member.id));
-    git(root, ['add', rel]);
-    git(root, ['commit', '-q', '-m', `[업로드] ${member.name}: ${name.replace(/\.md$/, '')} (${replaced ? '덮어쓰기' : stay ? '중간 업로드' : '[로그아웃]'})`, '--', rel]);
+    // 자기 칸 + 공용 게시판(투두리스트.md)을 함께 보낸다
+    const rels = [path.relative(root, path.join(dir, 'data', 'players', member.id)), path.relative(root, path.join(dir, '투두리스트.md'))].filter((r) => fs.existsSync(path.join(root, r)));
+    git(root, ['add', ...rels]);
+    git(root, ['commit', '-q', '-m', `[업로드] ${member.name}: ${name.replace(/\.md$/, '')} (${replaced ? '덮어쓰기' : stay ? '중간 업로드' : '[로그아웃]'})`, '--', ...rels]);
     pushed = 'failed';
     for (let i = 0; i < 3 && pushed !== 'pushed'; i++) {
       try { git(root, ['push', '-q', 'origin', 'HEAD']); pushed = 'pushed'; } catch { git(root, ['pull', '-q', '--rebase', '--autostash']); }

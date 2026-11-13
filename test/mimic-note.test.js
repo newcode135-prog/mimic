@@ -99,7 +99,7 @@ test('체크인: 대전제가 먼저, 미션이 그다음', () => {
   const lucas = checkinText(findMember('lucas', members), { nextId: 1, missions: [] });
   assert.match(lucas, /대전제 v/);
   assert.match(lucas, /루카스님, 지금 남은 미션이 없습니다/);
-  assert.match(lucas, /관리자\(창민·민호\)가 등록/);
+  assert.match(lucas, /관리자가 등록합니다/);
 });
 
 test('--top 으로 넣은 미션은 그 사람의 1번이 된다', () => {
@@ -108,4 +108,19 @@ test('--top 으로 넣은 미션은 그 사람의 1번이 된다', () => {
   addMission(db, { assignee: '창민', title: 'B', by: '창민' }, members);
   addMission(db, { assignee: '창민', title: '최우선', by: '창민', top: true }, members);
   assert.deepEqual(openMissions(db, 'changmin').map((m) => m.title), ['최우선', 'A', 'B']);
+});
+
+test('후순위: 관리자만 내릴 수 있고, 맨 뒤로 가며, 다른 관리자에게만 보인다', async () => {
+  const { setLowPriority, othersLowMissions } = await import('../mimic-note/lib.mjs');
+  const db = { nextId: 1, missions: [] };
+  addMission(db, { assignee: '창민', title: '맥미니', by: '창민' }, members);
+  addMission(db, { assignee: '창민', title: 'G-002', by: '창민' }, members);
+  assert.throws(() => setLowPriority(db, 'changmin', 1, '네이뜬', members), /관리자가 아니라/);
+  setLowPriority(db, 'changmin', 1, '창민', members);
+  assert.deepEqual(openMissions(db, 'changmin').map((m) => m.title), ['G-002', '맥미니']);
+  assert.match(formatMissions(findMember('창민', members), openMissions(db, 'changmin')), /맥미니 \(후순위\)/);
+  assert.equal(othersLowMissions(db, findMember('민호', members), members).length, 1);
+  assert.equal(othersLowMissions(db, findMember('유리', members), members).length, 1);
+  assert.equal(othersLowMissions(db, findMember('창민', members), members).length, 0);
+  assert.equal(othersLowMissions(db, findMember('루카스', members), members).length, 0);
 });

@@ -4,12 +4,13 @@
 //   node mimic-note/mission.mjs list [이름]                          남은 미션 보기(이름 없으면 전체)
 //   node mimic-note/mission.mjs add <이름> "제목" ["설명"] --by 창민   미션 추가(관리자만)
 //   node mimic-note/mission.mjs add <이름> "제목" ["설명"] --by 창민 --top   최우선(그 사람의 1번)으로 추가
+//   node mimic-note/mission.mjs low <이름> <번호|M-0004> --by 창민             후순위(맨 뒤 + 다른 관리자 체크인에 표시)
 //   node mimic-note/mission.mjs done <이름> <번호|M-0001>            미션 완료
 //
 // 바꾼 내용은 git commit·push 해야 다른 팀원·Claude Code 에게 보인다.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadMembers, requireMember, loadDb, saveDb, openMissions, doneMissions, addMission, completeMission, formatMissions } from './lib.mjs';
+import { loadMembers, requireMember, loadDb, saveDb, openMissions, doneMissions, addMission, completeMission, formatMissions, setLowPriority } from './lib.mjs';
 
 function takeFlag(args, name) {
   const i = args.indexOf(name);
@@ -65,7 +66,16 @@ export function run(argv, dir) {
     ].join('\n');
   }
 
-  throw new Error(`모르는 명령: ${cmd}. list | add | done 중 하나를 쓰세요.`);
+  if (cmd === 'low') {
+    const [who, ref] = rest;
+    if (!by) throw new Error('누가 바꾸는지 --by <관리자 이름> 을 붙여 주세요.');
+    const member = requireMember(who, members);
+    const m = setLowPriority(db, member.id, ref, by, members);
+    saveDb(db, dir);
+    return `후순위로 내렸습니다: [${m.id}] ${m.title} — ${member.name}님 목록 맨 뒤 + 다른 관리자 체크인에 표시\n→ git commit·push`;
+  }
+
+  throw new Error(`모르는 명령: ${cmd}. list | add | done | low 중 하나를 쓰세요.`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
