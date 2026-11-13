@@ -1,5 +1,5 @@
 {
-  "nextId": 22,
+  "nextId": 23,
   "missions": [
     {
       "id": "M-0001",
@@ -232,6 +232,17 @@
       "status": "todo",
       "createdBy": "changmin",
       "createdAt": "2026-11-13T06:33:03.720Z",
+      "doneAt": null
+    },
+    {
+      "id": "M-0022",
+      "assignee": "nathan",
+      "order": 4,
+      "title": "Molib developer setup (new session)",
+      "detail": "Open a NEW Claude Code session in ~ (not the check-in session), paste the Molib onboarding file you received privately, and ask it to clone into ~/molib-ad-research. Accept the GitHub invite to emileepark5281-cmd/molib-ad-research first. Stop before any deploy. Never paste the file or its passwords into this repo, Slack groups, or your [로그아웃] note.",
+      "status": "todo",
+      "createdBy": "yuri",
+      "createdAt": "2026-11-13T06:43:40.518Z",
       "doneAt": null
     }
   ]
