@@ -8,6 +8,7 @@ import { NOTE_DIR, loadMembers, findMember, loadDb, saveDb, openMissions, addMis
 import { buildMessage, chatIdFor, checkinText } from '../mimic-note/checkin.mjs';
 import { loadPremise } from '../mimic-note/lib.mjs';
 import { run } from '../mimic-note/mission.mjs';
+import { fakeGithub } from './mimic-note-fakes.js';
 
 const members = loadMembers();
 
@@ -69,17 +70,22 @@ test('미션 없는 팀원은 안내 문구', () => {
   assert.equal(formatMissions(findMember('유리', members), []), '유리님, 지금 남은 미션이 없습니다.');
 });
 
-test('mission.mjs: add → list → done 이 파일에 저장된다', () => {
+test('mission.mjs: add → list → done 이 GitHub main 에 저장된다(가짜 GitHub, 누가 했는지는 gh 로그인)', async () => {
   const dir = tempNote();
-  assert.match(run(['add', '민호', '테스트 미션', '설명', '--by', '창민'], dir), /민호님의 미션 1번 \[M-0001\]/);
-  assert.throws(() => run(['add', '민호', '제목'], dir), /--by/);
-  assert.match(run(['list', '민호'], dir), /1\. \[M-0001\] 테스트 미션/);
-  assert.match(run(['done', '민호', '1'], dir), /모든 미션을 끝냈습니다/);
+  const github = fakeGithub({ dir, login: 'darrenpual' }); // 창민
+  const out = await run(['add', '민호', '테스트 미션', '설명', '--by', '유리'], { dir, github, wait: false });
+  assert.match(out, /--by 는 더 이상 쓰지 않습니다/);
+  assert.match(out, /GitHub 저장 완료 — 민호 미션추가 1개: \[M-0001\] 테스트 미션/);
+  assert.equal(JSON.parse(github.store.get('mimic-note/data/missions.json').text).missions[0].createdBy, 'changmin', '--by 유리 가 아니라 gh 로그인(창민)으로 기록');
+  assert.match(await run(['list', '민호'], { dir }), /1\. \[M-0001\] 테스트 미션/);
+  assert.match(await run(['done', '민호', '1'], { dir, github, wait: false }), /완료: \[M-0001\] 테스트 미션[\s\S]*지금 남은 미션이 없습니다/);
   const db = loadDb(dir);
   assert.equal(db.missions[0].status, 'done');
+  assert.equal(db.missions[0].doneBy, 'changmin');
   assert.ok(db.missions[0].doneAt);
-  assert.equal(fs.readdirSync(path.join(dir, 'data')).filter((f) => f.endsWith('.tmp')).length, 0);
+  assert.equal(github.commits.length, 2);
   saveDb(db, dir);
+  assert.equal(fs.readdirSync(path.join(dir, 'data')).filter((f) => f.endsWith('.tmp')).length, 0);
 });
 
 test('chat id 는 개별 변수 또는 JSON 비밀값에서 읽는다', () => {
