@@ -17,8 +17,8 @@ const TOSS_METHOD = {
 export const formatMoney = (n, currency = 'KRW') => (currency === 'USD' ? `$${(Number(n || 0) / 100).toFixed(2)}` : formatWon(n));
 export const productLabel = (p) => t(p.label, p.labelEn);
 const unit = (p) => (p.kind === 'subscription' ? (p.months === 12 ? t('/년', '/yr') : t('/월', '/mo')) : '');
-// autoRenew: 자동 결제가 되는 결제 방식인지(테스트 결제, 운영은 원화 카드 구독만. 다른 수단은 결제한 기간만)
-const autoRenewFor = (d, method) => d.testMode || (!!d.available && method === 'card' && d.currency === 'KRW');
+// autoRenew: 자동 결제가 되는 결제 방식인지(테스트 결제, 운영은 원화 카드 구독·PayPal 구독. 다른 수단은 결제한 기간만)
+const autoRenewFor = (d, method) => d.testMode || (!!d.available && ((method === 'card' && d.currency === 'KRW') || (method === 'paypal' && d.provider === 'paypal')));
 function thenText(p, autoRenew, cur) {
   if (p.kind === 'subscription') {
     const per = p.months === 12 ? t('년', 'yr') : t('월', 'mo');
@@ -40,7 +40,7 @@ const fxText = (fx) => {
 export async function buyProduct(ctx, productId, method = 'card', onDone) {
   if (!ctx.me) return ctx.navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
   const o = await api('/api/billing/orders', { method: 'POST', body: { productId, method } });
-  if (!o.testMode) return livePay(o, method);
+  if (!o.testMode) return o.approveUrl ? location.assign(o.approveUrl) : livePay(o, method); // PayPal: 승인 화면으로
   const amount = formatMoney(o.amount, o.currency);
   return new Promise((resolve) => {
     const finish = async (result) => {
@@ -102,6 +102,20 @@ async function finishToss(q) {
   }
 }
 
+// PayPal 승인 화면에서 돌아옴(?paypal=order|sub|cancel&orderId=…): 서버가 캡처·구독 확인
+async function finishPaypal(q) {
+  history.replaceState({}, '', location.pathname);
+  if (q.paypal === 'cancel' || !q.orderId) return toast(t('결제가 취소되었어요', 'Payment was cancelled'), 'error');
+  try {
+    const r = await api(`/api/billing/orders/${encodeURIComponent(q.orderId)}/confirm`, { method: 'POST', body: {} });
+    if (r.status === 'pending') return toast(t('PayPal 이 결제를 마무리하고 있어요. 끝나면 혜택이 적용되고 알림으로 알려 드릴게요.', 'PayPal is finalizing your payment. Benefits apply once it completes, and we will notify you.'), 'ok');
+    toast(t('결제가 끝났어요. 혜택이 바로 적용됩니다.', 'Payment complete.'), 'ok');
+    await refreshShell();
+  } catch (e) {
+    toastError(e);
+  }
+}
+
 function compareTable(head, rows, keys) {
   return h(
     'div',
@@ -143,6 +157,7 @@ export async function render(root, ctx) {
   loadCss('/css/billing.css');
   const site = ctx.path === '/pricing';
   if (ctx.query.toss && ctx.me) await finishToss(ctx.query);
+  if (ctx.query.paypal && ctx.me) await finishPaypal(ctx.query);
   let selected = 'sub_year';
   let method = 'card';
 
@@ -277,11 +292,15 @@ export async function render(root, ctx) {
         h(
           'ul',
           { class: 'bl-guide' },
-          cur === 'USD'
+          d.provider === 'paypal'
+            ? h('li', {}, t('모든 금액은 미국 달러($)로, PayPal 로 결제됩니다. PayPal 계정이나 PayPal 결제창의 카드로 낼 수 있어요.', 'All prices are in US dollars ($) and paid with PayPal — your PayPal balance or a card in the PayPal checkout.'))
+            : cur === 'USD'
             ? h('li', {}, t('해외 지역은 모든 금액을 미국 달러($)로 결제하며, 원화 가격을 그날 환율로 환산해 가격이 매일 조금씩 달라질 수 있어요. ', 'Outside Korea all prices are charged in US dollars ($), converted from our KRW prices at the daily exchange rate, so they may change slightly each day. '), fxText(d.fx))
             : h('li', {}, t('모든 금액은 원화(₩)로 결제됩니다.', 'All prices are charged in Korean won (₩).')),
           d.testMode
             ? h('li', {}, t('구독은 기간이 끝날 때마다 같은 수단으로 자동 청구되고, 청구 7일 전에 미리 알려 드려요. 구독 관리에서 언제든 자동 갱신을 끌 수 있고, 끈 뒤에도 남은 기간은 그대로 씁니다.', 'Plans renew automatically with the same method; we remind you 7 days before. Turn off auto-renewal anytime and keep the remaining time.'))
+            : d.provider === 'paypal'
+              ? h('li', {}, t('구독은 기간이 끝날 때마다 PayPal 로 자동 청구되고, 청구 7일 전에 미리 알려 드려요. 구독 관리(또는 PayPal 계정)에서 언제든 자동 갱신을 끌 수 있고, 끈 뒤에도 남은 기간은 그대로 씁니다.', 'Plans renew automatically through PayPal at the end of each period; we remind you 7 days before. Turn off auto-renewal anytime in Subscriptions (or your PayPal account) and keep the remaining time.'))
             : cur === 'USD'
               ? h('li', {}, t('해외 결제(해외 카드·PayPal·Alipay)로 산 구독은 결제한 기간만 이용하고 자동으로 청구되지 않아요. 기간이 끝나기 7일 전에 알려 드립니다.', 'Plans bought with overseas payments (international card, PayPal, Alipay) cover the paid period only and never renew automatically. We remind you 7 days before they end.'))
               : h('li', {}, t('카드로 결제한 구독은 결제창에서 등록한 카드로 기간이 끝날 때마다 자동 청구되고, 청구 7일 전에 미리 알려 드려요. 다른 수단으로 결제한 구독은 결제한 기간만 이용하고 자동으로 청구되지 않아요. 구독 관리에서 언제든 자동 갱신을 끌 수 있어요.', 'Card subscriptions renew automatically on the card you register at checkout; we remind you 7 days before. Other methods cover the paid period only. Turn off auto-renewal anytime in Subscriptions.')),

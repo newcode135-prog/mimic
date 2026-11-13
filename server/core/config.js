@@ -38,6 +38,12 @@ export function loadConfig(overrides = {}) {
       tossSecretKeyUsd: env.TOSS_SECRET_KEY_USD,
       tossApiBase: env.TOSS_API_BASE,
       fxUsdKrw: env.MIMIC_FX_USD_KRW,
+      // PayPal 직접 결제(2026-11-13 결정): 모든 사용자 달러·PayPal. 키가 있거나 MIMIC_PAY_PROVIDER=paypal 이면 켜진다.
+      // 키가 없으면 개발 모드에서만 테스트 결제. PAYPAL_ENV=live 가 아니면 샌드박스 주소를 쓴다
+      provider: env.MIMIC_PAY_PROVIDER || (env.PAYPAL_CLIENT_ID ? 'paypal' : 'toss'),
+      paypalClientId: env.PAYPAL_CLIENT_ID,
+      paypalSecret: env.PAYPAL_CLIENT_SECRET,
+      paypalApiBase: env.PAYPAL_API_BASE || (env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'),
     },
     telegramToken: env.TELEGRAM_BOT_TOKEN,
     supportEmail: env.MIMIC_SUPPORT_EMAIL || 'support@mimic.local',
