@@ -63,6 +63,27 @@
       "status": "done",
       "note": "",
       "updatedAt": "2026-11-12T23:54:40.881Z"
+    },
+    {
+      "stage": "labeling",
+      "target": "대화-2026-11-13-4",
+      "status": "done",
+      "note": "",
+      "updatedAt": "2026-11-13T03:36:18.347Z"
+    },
+    {
+      "stage": "compression",
+      "target": "대화-2026-11-13-4",
+      "status": "done",
+      "note": "",
+      "updatedAt": "2026-11-13T03:36:18.386Z"
+    },
+    {
+      "stage": "upload",
+      "target": "대화-2026-11-13-4",
+      "status": "done",
+      "note": "",
+      "updatedAt": "2026-11-13T03:36:18.429Z"
     }
   ]
 }
