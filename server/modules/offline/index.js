@@ -8,9 +8,9 @@ import { requireNode, usage } from '../../core/files.js';
 import { capacityOf, isPremium, BT_MAX_FILES } from '../../core/plans.js';
 import { checkTransfer, cloudTaskAllowance, consumeCloudTask } from '../../core/quota.js';
 import { notify, audit } from '../../core/notify.js';
-import { kick, tick, cancel, closeEngine, requeueStale, safeName, safeFetch, readLimited, findBlock, urlKey, tooManyFiles, ytDlpPath, MAX_TORRENT_BYTES } from './engine.js';
+import { kick, tick, cancel, closeEngine, requeueStale, safeName, safeFetch, readLimited, findBlock, urlKey, tooManyFiles, ytDlpPath, syncSeeds, seedingStats, MAX_TORRENT_BYTES } from './engine.js';
 
-export { isLikelyAd, pickFiles, findYtDlp, isPrivateIp, assertPublicUrl, stripPrivate, parseYtDlpProgress } from './engine.js';
+export { isLikelyAd, pickFiles, findYtDlp, isPrivateIp, assertPublicUrl, stripPrivate, parseYtDlpProgress, seedingStats } from './engine.js';
 
 export const migrations = `
 CREATE TABLE IF NOT EXISTS offline_tasks (
@@ -64,9 +64,25 @@ CREATE TABLE IF NOT EXISTS offline_appeals (
   resolved_by TEXT
 );
 CREATE INDEX IF NOT EXISTS offline_appeals_status ON offline_appeals(status, created_at);
+CREATE TABLE IF NOT EXISTS offline_seeds (     -- Q-6: 받은 뒤 계속 시딩하는 토렌트(서버를 다시 켜도 이어서)
+  info_hash TEXT PRIMARY KEY,
+  torrent BLOB NOT NULL,                      -- .torrent(정보 사전 + 원래 tracker)
+  files TEXT NOT NULL,                        -- [{ path, size, hash }] 원래 파일 배치(hash NULL = 받지 않은 파일)
+  uploaded INTEGER NOT NULL DEFAULT 0,        -- 시딩으로 올려 준 바이트 합계
+  created_at INTEGER NOT NULL,                -- 시딩을 시작한 시각(상한을 넘으면 오래된 것부터 멈춤)
+  stopped_at INTEGER                          -- 멈춘 시각(NULL = 시딩 중)
+);
+CREATE TABLE IF NOT EXISTS offline_seed_files ( -- Q-6: 그 토렌트로 받아 만든 드라이브 파일(모두 완전히 지워지면 시딩을 멈춤)
+  file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  info_hash TEXT NOT NULL,
+  PRIMARY KEY (file_id, info_hash)
+);
 `;
 
-export const jobs = [{ name: 'offline:engine', everyMs: 2000, run: (ctx) => tick(ctx) }];
+export const jobs = [
+  { name: 'offline:engine', everyMs: 2000, run: (ctx) => tick(ctx) },
+  { name: 'offline:seeding', everyMs: 60_000, run: (ctx) => syncSeeds(ctx) },
+];
 export const close = (ctx) => closeEngine(ctx);
 
 const MAX_LINKS = 50;
@@ -262,6 +278,8 @@ export function register(app, ctx) {
   addCols('offline_cache', [['etag', 'TEXT'], ['last_modified', 'TEXT'], ['length', 'INTEGER']]);
   requeueStale(db);
   kick(ctx);
+  syncSeeds(ctx); // Q-6: 하던 시딩을 이어서
+
   // G-05: 'services' = 클라우드 다운로드 만들기·관리. 목록 보기는 services 또는 files:read 둘 중 하나면 된다(share 모듈과 같음)
   const write = requireScope('services');
   const read = (req, res, next) =>
@@ -385,6 +403,9 @@ export function register(app, ctx) {
     );
     res.status(201).json({ appeal: { id, taskId: t.id, status: 'open' } });
   });
+
+  // Q-6: 시딩 중인 토렌트 수와 시딩으로 올려 준 바이트 합계
+  app.get('/api/admin/offline/seeding', requireAdmin, (_req, res) => res.json(seedingStats(ctx)));
 
   app.get('/api/admin/offline/appeals', requireAdmin, (req, res) => {
     const status = ['open', 'accepted', 'rejected'].includes(req.query.status) ? req.query.status : null;

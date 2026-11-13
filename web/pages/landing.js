@@ -1,6 +1,7 @@
 // 서비스 소개(K-02) — 미믹 고유 마케팅 페이지. 일러스트는 아래 SVG 로 직접 그린다.
-import { api, h, icon, t, formatWon } from '/ui.js';
+import { api, h, icon, t } from '/ui.js';
 import { setup } from '/pages/help.js';
+import { formatMoney } from '/pages/payment.js';
 
 // 링크 한 줄이 구름(클라우드) 안의 파일 카드로 흘러 들어가고, 휴대폰·TV 로 재생되는 그림
 const ART = `
@@ -173,7 +174,8 @@ export async function render(root, ctx) {
       const list = r.products || r.items || r;
       const monthly = Array.isArray(list) && list.find((p) => p.id === 'sub_month');
       const price = monthly?.price?.global ?? monthly?.price;
-      if (typeof price === 'number') premiumPrice.textContent = t(`월 ${formatWon(price)}부터`, `From ${formatWon(price)}/mo`);
+      const money = typeof price === 'number' ? formatMoney(price, r.currency) : null; // 해외 방문자는 달러(센트 단위)
+      if (money) premiumPrice.textContent = t(`월 ${money}부터`, `From ${money}/mo`);
     })
     .catch(() => {});
 }

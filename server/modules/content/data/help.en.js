@@ -259,6 +259,8 @@ The monthly transfer quota (cloud ${N.mCloud}, downstream ${N.mDown}, upload ${N
 - Buying a one-time pass while subscribed extends your membership by that much.
 - First-purchase discounts are limited to one per account.
 - Before a price goes up or a free trial turns into a paid plan, we tell you in advance and ask for your consent.
+- In Korea you pay in Korean won; elsewhere you pay in US dollars. Dollar prices are the won price converted at that day's exchange rate, so they can change slightly from day to day.
+- Outside Korea you can pay with international cards (Visa, Mastercard, JCB, UnionPay, AMEX), PayPal or Alipay. Subscriptions paid this way don't renew automatically, so pay again before your period ends.
 
 If you paid but the benefits haven't shown up, send us the payment time and order number via [Contact us].`,
   },
@@ -294,6 +296,13 @@ Extra storage you bought is paused when Premium ends and comes back when you sub
 - Your friend's invite has to be linked within ${N.refBind} hours of signing up to count.
 - Subscriptions, in-app purchases and Premium codes count as purchases; free codes and gifted periods don't.
 - Rewards are taken back if we find abuse, such as creating several accounts on one device.
+
+## Referral Program Pro
+
+Switch to Referral Program Pro on the [Invite friends] screen to earn a share of what your friends pay as cash instead of Premium days. Once your balance reaches the minimum, you can request a payout to PayPal or a Korean bank account.
+
+- The switch is permanent: you can't go back to Premium-day rewards.
+- If a friend's payment is refunded or found to be abuse, that reward is taken back; if you've already been paid, it is deducted from future rewards.
 
 Track your invites on the [Invite friends] screen.`,
   },

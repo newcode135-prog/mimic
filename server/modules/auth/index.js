@@ -194,6 +194,11 @@ export function regionBlocked(db, user, kind = 'download', req = null) {
   return dials.some((d) => d && ruleFor(db, d, col));
 }
 const REGION_BLOCKED_MSG = '현재 지역(국가번호)에서는 새로 가입할 수 없습니다';
+// Q-5: 데이터 디스크가 차서 admin 모듈이 새 가입을 멈췄으면 503. 이미 가입한 회원의 로그인은 그대로
+const signupGate = (ctx, req) => {
+  if (!ctx.modules.admin?.signupPaused?.(ctx.db)) return;
+  fail(503, 'signup_paused', wantsEn(req) ? 'New sign-ups are temporarily paused. Please try again later. Existing members can still log in.' : '지금은 새 가입을 잠시 멈췄어요. 나중에 다시 시도해 주세요. 이미 가입한 분은 그대로 로그인할 수 있어요.');
+};
 // H-01: 새 계정은 필수 동의(만 14세 이상·이용약관·개인정보 수집·이용)를 하나씩 따로 받는다. 마케팅 수신은 선택
 const consentOf = (b) => ({ required: b?.agreeAge14 === true && b?.agreeTerms === true && b?.agreePrivacy === true, marketing: b?.agreeMarketing === true });
 const TERMS_MSG = '만 14세 이상 확인, 이용약관과 개인정보 수집·이용 동의가 필요합니다';
@@ -269,6 +274,7 @@ function createAccount(ctx, req, { email = null, phone = null, password = null, 
   const { db, cfg } = ctx;
   const { region, from: regionFrom } = regionOf(req, phone, cfg);
   if (regionBlocked(db, { phone, region }, 'signup')) fail(403, 'region_blocked', REGION_BLOCKED_MSG);
+  signupGate(ctx, req);
   const id = newId('u_');
   const display = (name || (email ? email.split('@')[0] : phone ? `미믹${phone.slice(-4)}` : '미믹 사용자')).slice(0, 30);
   const lang = wantsEn(req) ? 'en' : 'ko';
@@ -499,6 +505,7 @@ export function register(app, ctx) {
     const owner = db.prepare('SELECT id FROM users WHERE email=?').get(email);
     if (purpose === 'signup' && owner) fail(409, 'email_taken', '이미 가입된 이메일입니다. 로그인해 주세요');
     if (purpose === 'signup' && regionBlocked(db, { region: regionOf(req, null, cfg).region }, 'signup')) fail(403, 'region_blocked', REGION_BLOCKED_MSG);
+    if (purpose === 'signup') signupGate(ctx, req);
     if (purpose === 'reset' && !owner) fail(404, 'email_not_found', '가입되지 않은 이메일입니다');
     if (purpose === 'bind') {
       needSession(req);
@@ -514,6 +521,7 @@ export function register(app, ctx) {
     if (!consent.required) fail(400, 'terms_required', TERMS_MSG);
     if (!passwordValid(b.password)) fail(400, 'weak_password', '비밀번호는 문자·숫자·기호를 섞어 6~16자로 정해 주세요');
     if (db.prepare('SELECT 1 FROM users WHERE email=?').get(email)) fail(409, 'email_taken', '이미 가입된 이메일입니다. 로그인해 주세요');
+    signupGate(ctx, req); // 코드를 쓰기 전에: 멈춘 동안 받은 코드가 헛되이 소모되지 않게
     useCode(db, cfg, req, { target: email, purpose: 'signup', code: b.code });
     const u = createAccount(ctx, req, { email, password: b.password, via: 'email', inviteCode: b.inviteCode, marketing: consent.marketing });
     res.json({ user: login(ctx, req, res, u, 'email'), created: true });
@@ -554,6 +562,7 @@ export function register(app, ctx) {
       needSession(req);
       if (owner) fail(409, 'phone_taken', owner.id === req.user.id ? '이미 연결된 번호입니다' : '다른 계정에서 쓰는 번호입니다');
     } else if (!owner && ruleFor(db, phone, 'block_signup')) fail(403, 'region_blocked', '이 국가번호로는 새로 가입할 수 없습니다');
+    if (purpose === 'login' && !owner) signupGate(ctx, req);
     res.json({ ...issueCode(db, cfg, req, { target: phone, purpose, channel: 'sms' }), isNew: purpose === 'login' && !owner });
   });
 
@@ -565,6 +574,7 @@ export function register(app, ctx) {
     if (!u) {
       if (ruleFor(db, phone, 'block_signup')) fail(403, 'region_blocked', '이 국가번호로는 새로 가입할 수 없습니다');
       if (!consent.required) fail(400, 'terms_required', TERMS_MSG);
+      signupGate(ctx, req);
     }
     useCode(db, cfg, req, { target: phone, purpose: 'login', code: b.code });
     const created = !u;
@@ -998,4 +1008,5 @@ export function register(app, ctx) {
     audit(db, { userId: req.user.id, action: 'auth:region_rule_deleted', detail: { code: req.params.code }, ip: req.ip });
     res.json({ ok: true });
   });
+
 }

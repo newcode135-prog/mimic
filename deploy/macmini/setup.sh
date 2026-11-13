@@ -116,11 +116,18 @@ $admin_line
 # MIMIC_ANDROID_SHA256=
 # 국가 헤더: 앞단 프록시(예: Cloudflare)가 직접 넣어 줄 때만. Caddy 만 쓰면 비워 두세요(사용자가 위조할 수 있음)
 # MIMIC_COUNTRY_HEADER=cf-ipcountry
-# 한도(맥미니 베타는 프리미엄 용량을 낮춰 운영. 기본 10240GB)
-# MIMIC_PREMIUM_STORAGE_GB=1024
+# 한도(결정 Q-5: 프리미엄은 PikPak 과 같이 10TB 표시. 기본 10240GB)
+# MIMIC_PREMIUM_STORAGE_GB=10240
 # MIMIC_VAULT_STORAGE_GB=100
 # MIMIC_OFFLINE_MAX_RUNNING=10
-# MIMIC_BT_UPLOAD_KBPS=64
+# 디스크 경보(Q-5): 이 % 이상이면 관리자 경보 + 신규 가입 일시 중지, 아래 % 미만이면 자동 재개
+# MIMIC_DISK_ALERT_PCT=80
+# MIMIC_DISK_RESUME_PCT=75
+# 시딩(Q-6): 업로드 속도 상한(KB/s, 0 = 제한 없음)과 동시에 시딩할 토렌트 수
+# MIMIC_SEED_UPLOAD_KBPS=0
+# MIMIC_SEED_MAX=200
+# 서버가 받는 주소(기본 127.0.0.1 — 같은 맥의 Caddy 만 접속). 다른 구성일 때만 0.0.0.0
+# MIMIC_HOST=127.0.0.1
 EOF
 }
 

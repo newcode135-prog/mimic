@@ -1,5 +1,6 @@
-// 친구 초대·보상(/drive/invite). I-04 초대 보상, I-05 추천 보상 Pro
-import { api, h, t, toast, toastError, modal, formatBytes, formatDate, loadCss, icon } from '/ui.js';
+// 친구 초대·보상(/drive/invite). I-04 초대 보상, I-05 추천 보상 Pro(스스로 전환·현금 보상·출금 요청)
+import { api, h, t, toast, toastError, modal, confirmDialog, formatBytes, formatDate, loadCss, icon } from '/ui.js';
+import { formatMoney } from '/pages/payment.js';
 
 async function copy(text) {
   try {
@@ -11,27 +12,128 @@ async function copy(text) {
 }
 const copyRow = (value, label) => h('div', { class: 'bl-copy' }, h('input', { class: 'input', value, readonly: true, 'aria-label': label, onfocus: (e) => e.target.select() }), h('button', { class: 'btn primary', html: `${icon('copy')}<span>${t('복사', 'Copy')}</span>`, onclick: () => copy(value) }));
 
-function openProForm(done) {
-  const channel = h('input', { class: 'input', maxlength: 300, placeholder: t('예: 유튜브 채널 주소, 블로그, 커뮤니티', 'e.g. YouTube channel, blog, community') });
-  const audience = h('input', { class: 'input', maxlength: 100, placeholder: t('예: 구독자 2만 명', 'e.g. 20k subscribers') });
-  const contact = h('input', { class: 'input', maxlength: 200, placeholder: t('이메일 또는 메신저 아이디', 'Email or messenger ID') });
+// ---------- 추천 보상 Pro(I-05) ----------
+// 금액은 최소 단위(원·센트)
+const minText = (pro) => `${formatMoney(pro.minWithdraw.KRW, 'KRW')} / ${formatMoney(pro.minWithdraw.USD, 'USD')}`;
+const LEDGER = { reward: ['친구 결제 보상', 'Friend purchase'], release: ['보류됐던 보상 지급', 'Held reward released'], refund: ['환불로 회수', 'Taken back (refund)'], revoke: ['부정 참여로 회수', 'Taken back (abuse)'] };
+const WD_STATUS = { pending: ['처리 중', 'Processing', 'accent'], paid: ['보냄', 'Sent', 'brand'], rejected: ['반려', 'Rejected', 'danger'] };
+
+async function upgradePro(pro, done) {
+  const ok = await confirmDialog(
+    t('추천 보상 Pro로 전환할까요?', 'Upgrade to Referral Pro?'),
+    t(
+      `전환하면 이후 초대 보상은 프리미엄 일수 대신 현금(친구 결제 금액의 ${pro.cashPercent}%)으로만 받아요. 이미 받은 프리미엄 일수는 그대로지만, 전환은 되돌릴 수 없어 다시 프리미엄 일수 보상으로 바꿀 수 없어요.`,
+      `From now on, invite rewards are paid in cash (${pro.cashPercent}% of what your friend pays) instead of Premium days. Days you already earned stay, but this cannot be undone: you can never switch back to Premium-day rewards.`,
+    ),
+    { okLabel: t('되돌릴 수 없음을 알고 전환', 'I understand, upgrade'), danger: true },
+  );
+  if (!ok) return;
+  try {
+    await api('/api/billing/invite/pro/upgrade', { method: 'POST', body: { confirm: true } });
+    toast(t('추천 보상 Pro로 전환했어요', 'You are now on Referral Pro'), 'ok');
+    done();
+  } catch (e) {
+    toastError(e);
+  }
+}
+
+function openWithdraw(b, min, done) {
+  const usd = b.currency === 'USD';
+  const amount = h('input', { class: 'input', type: 'number', min: usd ? min / 100 : min, max: usd ? b.available / 100 : b.available, step: usd ? '0.01' : '1', value: usd ? (b.available / 100).toFixed(2) : b.available });
+  const payout = h('textarea', { class: 'input', rows: 3, maxlength: 300, placeholder: t('PayPal 이메일, 또는 은행 이름·계좌번호·예금주', 'PayPal email, or bank name, account number and holder') });
   const field = (label, el) => h('div', { class: 'field' }, h('label', {}, label), el);
   modal({
-    title: t('추천 보상 Pro 신청', 'Apply for Referral Pro'),
-    body: h('div', {}, field(t('홍보 채널', 'Channel'), channel), field(t('구독자·방문자 규모', 'Audience size'), audience), field(t('연락처', 'Contact'), contact), h('p', { class: 'small muted' }, t('보내 주신 정보는 Pro 심사에만 쓰고, 결과는 알림과 이메일로 알려 드려요.', 'We use this only to review your application.'))),
+    title: t('현금 보상 출금', 'Withdraw cash rewards'),
+    body: h(
+      'div',
+      {},
+      field(t(`금액 (출금 가능 ${formatMoney(b.available, b.currency)})`, `Amount (available ${formatMoney(b.available, b.currency)})`), amount),
+      field(t('받을 곳', 'Send to'), payout),
+      h('p', { class: 'small muted' }, t(`${formatMoney(min, b.currency)}부터 출금할 수 있어요. 운영팀이 확인한 뒤 보내 드리고 결과를 알림과 이메일로 알려 드려요.`, `Minimum ${formatMoney(min, b.currency)}. Our team reviews the request, sends the money and lets you know by notification and email.`)),
+    ),
     actions: [
       { label: t('취소', 'Cancel') },
       {
-        label: t('신청하기', 'Apply'),
+        label: t('출금 요청', 'Request withdrawal'),
         kind: 'primary',
         onClick: async () => {
-          await api('/api/billing/invite/pro/apply', { method: 'POST', body: { channel: channel.value, audience: audience.value, contact: contact.value } });
-          toast(t('신청을 받았어요. 검토 후 알려 드릴게요', 'Application received'), 'ok');
+          const n = Math.round(Number(amount.value) * (usd ? 100 : 1));
+          await api('/api/billing/invite/pro/withdrawals', { method: 'POST', body: { currency: b.currency, amount: n, payout: payout.value } });
+          toast(t('출금 요청을 받았어요', 'Withdrawal requested'), 'ok');
           done();
         },
       },
     ],
   });
+}
+
+function proSection(pro, redraw) {
+  const title = h('h3', { class: 'bl-section-title', style: { margin: 0 } }, t('추천 보상 Pro', 'Referral Pro'));
+  if (!pro.pro) {
+    return h(
+      'section',
+      { class: 'card' },
+      h('div', { class: 'row', style: { flexWrap: 'wrap' } }, title, h('div', { class: 'spacer' }), h('button', { class: 'btn primary sm', onclick: () => upgradePro(pro, redraw) }, t('Pro로 전환', 'Upgrade to Pro'))),
+      h(
+        'p',
+        { class: 'small muted', style: { margin: '8px 0 0' } },
+        t(
+          `Pro로 전환하면 친구가 프리미엄을 결제할 때마다 프리미엄 일수 대신 결제 금액의 ${pro.cashPercent}%를 그 결제 통화의 현금으로 적립해요. 적립금은 ${minText(pro)}부터 PayPal이나 은행 계좌로 출금할 수 있어요. 승인 없이 바로 전환되지만, 되돌릴 수 없어요.`,
+          `With Pro, every time a friend pays for Premium you earn ${pro.cashPercent}% of the amount in cash (in the currency they paid) instead of Premium days. Withdraw from ${minText(pro)} to PayPal or a bank account. Upgrading is instant with no approval, but it cannot be undone.`,
+        ),
+      ),
+    );
+  }
+  // 적립한 적이 있거나 내 통화인 잔액만
+  const shown = pro.balances.filter((b) => b.earned || b.pending || b.paid || b.currency === pro.currency);
+  const balances = h(
+    'div',
+    { class: 'bl-stats' },
+    ...shown.map((b) => {
+      const min = pro.minWithdraw[b.currency];
+      return h(
+        'div',
+        { class: 'bl-stat', style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' } },
+        h('b', {}, formatMoney(b.available, b.currency)),
+        h('span', {}, t('출금 가능', 'Available')),
+        h('span', { class: 'small muted' }, t(`처리 중 ${formatMoney(b.pending, b.currency)} · 보냄 ${formatMoney(b.paid, b.currency)}`, `Processing ${formatMoney(b.pending, b.currency)} · Sent ${formatMoney(b.paid, b.currency)}`)),
+        h('button', { class: 'btn sm', style: { marginTop: '6px' }, disabled: b.available < min, title: b.available < min ? t(`${formatMoney(min, b.currency)}부터 출금할 수 있어요`, `Minimum ${formatMoney(min, b.currency)}`) : '', onclick: () => openWithdraw(b, min, redraw) }, t('출금', 'Withdraw')),
+      );
+    }),
+  );
+  const tableOf = (cols, rows, empty) =>
+    rows.length ? h('div', { class: 'table-scroll' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ...cols.map((c) => h('th', {}, t(...c))))), h('tbody', {}, ...rows))) : h('p', { class: 'muted small', style: { margin: 0 } }, empty);
+  const ledger = tableOf(
+    [['날짜', 'Date'], ['내용', 'Details'], ['금액', 'Amount']],
+    pro.ledger.map((x) => h('tr', {}, h('td', {}, formatDate(x.createdAt)), h('td', {}, t(...(LEDGER[x.reason] || [x.reason, x.reason]))), h('td', {}, `${x.amount > 0 ? '+' : '−'}${formatMoney(Math.abs(x.amount), x.currency)}`))),
+    t('아직 적립한 현금 보상이 없어요.', 'No cash rewards yet.'),
+  );
+  const withdrawals = tableOf(
+    [['요청일', 'Requested'], ['금액', 'Amount'], ['받을 곳', 'Send to'], ['상태', 'Status'], ['메모', 'Note']],
+    pro.withdrawals.map((w) => {
+      const [ko, en, cls] = WD_STATUS[w.status] || [w.status, w.status, ''];
+      return h('tr', {}, h('td', {}, formatDate(w.createdAt)), h('td', {}, formatMoney(w.amount, w.currency)), h('td', { class: 'small' }, w.payout), h('td', {}, h('span', { class: `badge ${cls}` }, t(ko, en))), h('td', { class: 'small' }, w.note || ''));
+    }),
+    t('출금 요청 내역이 없어요.', 'No withdrawal requests yet.'),
+  );
+  return h(
+    'section',
+    { class: 'card col', style: { gap: '12px' } },
+    h('div', { class: 'row', style: { flexWrap: 'wrap' } }, title, h('span', { class: 'badge brand' }, t('Pro 회원', 'Pro member'))),
+    h(
+      'p',
+      { class: 'small muted', style: { margin: 0 } },
+      t(
+        `친구가 결제할 때마다 결제 금액의 ${pro.cashPercent}%를 현금으로 적립해요. ${minText(pro)}부터 출금할 수 있고, 친구의 결제가 환불되거나 부정 참여로 확인되면 그 보상은 회수돼요(이미 출금했다면 이후 적립금에서 빠져요).`,
+        `You earn ${pro.cashPercent}% of each payment your friends make, in cash. Withdraw from ${minText(pro)}. Rewards from refunded or fraudulent purchases are taken back (deducted from future earnings if already withdrawn).`,
+      ),
+    ),
+    balances,
+    h('b', {}, t('적립 내역', 'Reward history')),
+    ledger,
+    h('b', {}, t('출금 내역', 'Withdrawals')),
+    withdrawals,
+  );
 }
 
 export async function render(root, ctx) {
@@ -45,7 +147,7 @@ export async function render(root, ctx) {
     const hero = h(
       'section',
       { class: 'card bl-hero' },
-      h('h2', {}, t(`친구가 프리미엄을 사면, 그 기간의 ${rate}%가 내 프리미엄으로`, `Earn ${rate}% of the Premium days your friends buy`)),
+      h('h2', {}, pro.pro ? t(`친구가 프리미엄을 결제하면, 결제 금액의 ${pro.cashPercent}%가 내 현금 보상으로`, `Earn ${pro.cashPercent}% of what your friends pay for Premium, in cash`) : t(`친구가 프리미엄을 사면, 그 기간의 ${rate}%가 내 프리미엄으로`, `Earn ${rate}% of the Premium days your friends buy`)),
       h('p', { class: 'muted' }, t(`친구가 가입 후 1년 안에 결제할 때마다 보상이 바로 쌓여요. 같은 달에 초대한 친구 ${r.uploadBonusEvery}명이 구매할 때마다 업로드 쿼터 ${formatBytes(r.uploadBonus)}도 더 드려요.`, `Rewards land right after each purchase within a year of sign-up, plus ${formatBytes(r.uploadBonus)} upload quota for every ${r.uploadBonusEvery} buyers invited in the same month.`)),
       h('div', { class: 'field', style: { margin: '12px 0 0' } }, h('label', {}, t('내 초대 링크', 'My invite link')), copyRow(link, t('초대 링크', 'Invite link'))),
       h('div', { class: 'field', style: { margin: '8px 0 0' } }, h('label', {}, t('내 추천인 코드', 'My referral code')), copyRow(d.inviteCode, t('추천인 코드', 'Referral code'))),
@@ -115,7 +217,7 @@ export async function render(root, ctx) {
                     h('td', {}, formatDate(x.joinedAt, false)),
                     h('td', {}, x.via === 'signup' ? t('초대 링크', 'Link') : t('추천인 코드', 'Code')),
                     h('td', {}, x.purchased ? h('span', { class: 'badge brand' }, t('구매함', 'Yes')) : h('span', { class: 'muted' }, '—')),
-                    h('td', {}, x.rewardDays ? t(`${x.rewardDays}일`, `${x.rewardDays}d`) : '—'),
+                    h('td', {}, [x.rewardDays ? t(`${x.rewardDays}일`, `${x.rewardDays}d`) : '', x.rewardCash ? formatMoney(x.rewardCash, x.cashCurrency) : ''].filter(Boolean).join(' · ') || '—'),
                   ),
                 ),
               ),
@@ -139,15 +241,7 @@ export async function render(root, ctx) {
       ),
     );
 
-    const a = pro.application;
-    const proStatus = { pending: ['검토 중', 'Under review', 'accent'], approved: ['승인됨', 'Approved', 'brand'], rejected: ['반려됨', 'Not approved', 'danger'] };
-    const proBox = h(
-      'section',
-      { class: 'card' },
-      h('div', { class: 'row', style: { flexWrap: 'wrap' } }, h('h3', { class: 'bl-section-title', style: { margin: 0 } }, t('추천 보상 Pro', 'Referral Pro')), a ? h('span', { class: `badge ${proStatus[a.status][2]}` }, t(proStatus[a.status][0], proStatus[a.status][1])) : null, h('div', { class: 'spacer' }), !a || a.status === 'rejected' ? h('button', { class: 'btn primary sm', onclick: () => openProForm(draw) }, t('신청하기', 'Apply')) : null),
-      h('p', { class: 'small muted', style: { margin: '8px 0 0' } }, t(pro.description.ko, pro.description.en)),
-      a?.note ? h('p', { class: 'small', style: { margin: '8px 0 0' } }, t('운영팀 메모: ', 'Note: '), a.note) : null,
-    );
+    const proBox = proSection(pro, draw);
 
     root.replaceChildren(h('div', { class: 'bl-page col', style: { gap: '16px' } }, h('div', { class: 'bl-head', style: { margin: 0 } }, h('h2', {}, t('친구 초대', 'Invite friends'))), hero, ways, bind, stats, records, rules, proBox));
   }

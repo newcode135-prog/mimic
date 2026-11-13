@@ -9,6 +9,7 @@ import { loadConfig } from './core/config.js';
 import { openDb } from './core/db.js';
 import { loadUser, requireUser, publicUser, hasScope } from './core/auth.js';
 import { usage } from './core/files.js';
+import { HttpError } from './core/util.js';
 import { capacityOf, limitsFor, isPremium } from './core/plans.js';
 import { fail } from './core/util.js';
 import { gcBlobs } from './core/storage.js';
@@ -71,7 +72,7 @@ export async function createApp(overrides = {}) {
     res.json({
       dev: cfg.dev,
       oauth: Object.fromEntries(Object.entries(cfg.oauth).map(([k, v]) => [k, !!v.clientId])),
-      paymentsTestMode: cfg.dev && !cfg.payments.tossSecretKey,
+      paymentsTestMode: cfg.dev && !cfg.payments.tossSecretKey && !cfg.payments.tossSecretKeyUsd,
       telegram: !!cfg.telegramToken,
     }),
   );
@@ -122,9 +123,10 @@ export async function createApp(overrides = {}) {
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
     const status = err.status || err.statusCode || 500;
-    if (status >= 500) console.error(err);
+    const known = err instanceof HttpError; // fail() 로 일부러 낸 오류(가입 일시 중지 503 등)는 문구를 그대로 보여 준다
+    if (status >= 500 && !known) console.error(err);
     if (res.headersSent) return res.end();
-    res.status(status).json({ error: err.code || (status >= 500 ? 'server_error' : 'bad_request'), message: status >= 500 ? '서버 오류가 발생했습니다' : err.message });
+    res.status(status).json({ error: err.code || (status >= 500 ? 'server_error' : 'bad_request'), message: status >= 500 && !known ? '서버 오류가 발생했습니다' : err.message });
   });
 
   const timers = [];

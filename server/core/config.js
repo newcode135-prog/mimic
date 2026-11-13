@@ -22,7 +22,7 @@ export function loadConfig(overrides = {}) {
     baseUrl,
     dataDir: env.MIMIC_DATA || path.join(os.homedir(), '.mimic'),
     dev: env.NODE_ENV !== 'production' && isLocalUrl(baseUrl),
-    secret: env.MIMIC_SECRET || DEV_SECRET,
+    secret: env.MIMIC_SECRET || DEV_SECRET, // 바꾸면 저장된 자동 결제 카드(빌링키 암호문)를 풀 수 없어 그 구독은 자동 갱신이 멈춘다
     timezoneOffsetMin: 9 * 60, // 쿼터 일·월 초기화 기준: KST
     runJobs: true,
     oauth: {
@@ -30,7 +30,15 @@ export function loadConfig(overrides = {}) {
       facebook: { clientId: env.FACEBOOK_CLIENT_ID, clientSecret: env.FACEBOOK_CLIENT_SECRET },
       apple: { clientId: env.APPLE_CLIENT_ID, teamId: env.APPLE_TEAM_ID, keyId: env.APPLE_KEY_ID, privateKey: env.APPLE_PRIVATE_KEY },
     },
-    payments: { tossClientKey: env.TOSS_CLIENT_KEY, tossSecretKey: env.TOSS_SECRET_KEY, tossApiBase: env.TOSS_API_BASE },
+    // 해외(달러) 결제는 토스 달러 전용 상점 키가 따로 있다(Q-4). fxUsdKrw: 환율을 받아 오지 못할 때 쓰는 USD/KRW(없으면 billing 기본값)
+    payments: {
+      tossClientKey: env.TOSS_CLIENT_KEY,
+      tossSecretKey: env.TOSS_SECRET_KEY,
+      tossClientKeyUsd: env.TOSS_CLIENT_KEY_USD,
+      tossSecretKeyUsd: env.TOSS_SECRET_KEY_USD,
+      tossApiBase: env.TOSS_API_BASE,
+      fxUsdKrw: env.MIMIC_FX_USD_KRW,
+    },
     telegramToken: env.TELEGRAM_BOT_TOKEN,
     supportEmail: env.MIMIC_SUPPORT_EMAIL || 'support@mimic.local',
     adminEmail: env.MIMIC_ADMIN_EMAIL,

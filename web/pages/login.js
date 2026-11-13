@@ -103,6 +103,7 @@ function formEl(children, label, onSubmit) {
 const pwInput = (placeholder, autocomplete = 'current-password') => h('input', { class: 'input', type: 'password', autocomplete, maxlength: 16, placeholder, required: true });
 
 const ERRORS = {
+  signup_paused: ['지금은 새 가입을 잠시 멈췄어요. 나중에 다시 시도해 주세요', 'New sign-ups are temporarily paused. Please try again later'],
   oauth_state: ['로그인 요청 시간이 지났어요. 다시 시도해 주세요', 'The login request expired. Please try again'],
   oauth_denied: ['소셜 로그인을 취소했어요', 'Social login was cancelled'],
   oauth_failed: ['소셜 로그인에 실패했어요. 잠시 뒤 다시 시도해 주세요', 'Social login failed. Please try again later'],

@@ -74,7 +74,8 @@ We process file contents only to provide the Service (storage, playback and dedu
       billing: { title: '3. Payment and renewal', body: `- A subscription is billed automatically on the same cycle until you cancel it. We send a reminder before each renewal.
 - A first-payment discount applies only once per account.
 - Before a free trial turns into a paid plan or a price goes up, we tell you in advance and ask for your consent again. Without your consent, no automatic payment is made.
-- Buying a one-time pass while subscribed extends your membership by the length of the pass.` },
+- Buying a one-time pass while subscribed extends your membership by the length of the pass.
+- Members in Korea pay in Korean won and members elsewhere pay in US dollars. Dollar amounts are the won price converted at the exchange rate on the payment date. Subscriptions paid from outside Korea do not renew automatically.` },
       withdrawal: { title: '4. Withdrawal and refunds', body: `- You may withdraw from a purchase within 7 days of the payment date (Article 17 of the Act on the Consumer Protection in Electronic Commerce).
 - If you have already used Premium benefits, we may refund the amount minus the part that covers the period and benefits used; we tell you this before you pay.
 - If you were charged by mistake, tell us within 30 days of noticing it and we will refund the full amount after checking.
@@ -82,7 +83,7 @@ We process file contents only to provide the Service (storage, playback and dedu
 - If you paid through an app store, the store's refund process applies first.` },
       cancel: { title: '5. Cancelling', body: 'You can cancel a subscription at any time from [Subscriptions & purchases > Subscriptions]. Cancelling stops the next payment, and your benefits continue until the end of the period you have already paid for.' },
       expiry: { title: '6. After expiry', body: `When Premium ends, you become a free member. If your stored data is larger than the free storage, you can no longer save new files; online playback stops after ${N.playStop} days; and if you stay over the limit for ${N.overMonths} months, we may, after a ${N.warnMonths}-month grace period with notices, remove your oldest files until you are no longer over the limit.` },
-      codes: { title: '7. Coupons and referral rewards', body: 'Premium time received from coupons or referral rewards cannot be exchanged for cash or refunded. Rewards obtained by improper means will be taken back.' },
+      codes: { title: '7. Coupons and referral rewards', body: 'Premium time received from coupons or referral rewards cannot be exchanged for cash or refunded. However, members who choose Referral Program Pro receive referral rewards in cash instead of Premium time, and this choice cannot be undone. Cash rewards are paid by the Company after review when the member requests a payout. Rewards based on a payment that was later refunded, or obtained by improper means, will be taken back; if already paid, they are deducted from later rewards.' },
     },
   },
   'anti-abuse': {

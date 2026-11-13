@@ -1,5 +1,6 @@
 // 관리자 백오피스 API(K-06): 통계, 회원 관리, 차단 목록, 신고 처리, 문의 답변, 공지 알림, 감사 로그, 쿼터 정책.
 // 다른 모듈의 관리자 API(결제·쿠폰·이의제기 등)는 각 모듈이 /api/admin/<모듈>/* 에 둔다.
+import fs from 'node:fs';
 import { requireAdmin, publicUser } from '../../core/auth.js';
 import { now, newId, fail, json, DAY } from '../../core/util.js';
 import { valuesOf, resolveLocal as locate } from '../content/locate.js';
@@ -101,6 +102,85 @@ function adminUser(u, extra = {}) {
   return { ...publicUser(u), statusUntil: u.status_until, lastLoginAt: u.last_login_at, deleteRequestedAt: u.delete_requested_at, ...extra };
 }
 
+export const migrations = `CREATE TABLE IF NOT EXISTS admin_meta (k TEXT PRIMARY KEY, v TEXT);`;
+
+// ---------- 데이터 디스크 경보·가입 멈춤(Q-5) ----------
+// 프리미엄 표시 용량(10TB)은 그대로 두고, 실제 디스크가 차면 관리자에게 알리고 새 가입을 멈춘다.
+// mode: 'auto'(사용률로 자동) · 'pause'(관리자가 멈춤) · 'resume'(관리자가 엶). autoPaused 는 자동 판단 결과
+const envPct = (name, dflt) => {
+  const v = Number(process.env[name]);
+  return v > 0 && v <= 100 ? v : dflt;
+};
+export function diskLimits() {
+  const alertPct = envPct('MIMIC_DISK_ALERT_PCT', 80);
+  return { alertPct, resumePct: envPct('MIMIC_DISK_RESUME_PCT', 75), urgentPct: Math.max(90, alertPct) };
+}
+const readDisk = (db) => json(db.prepare("SELECT v FROM admin_meta WHERE k='disk'").get()?.v, {});
+const saveDisk = (db, d) => db.prepare("INSERT INTO admin_meta (k, v) VALUES ('disk', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").run(JSON.stringify(d));
+const pausedOf = (d) => d.mode === 'pause' || (d.mode !== 'resume' && !!d.autoPaused);
+// auth 모듈이 ctx.modules.admin.signupPaused(db) 로 가입 직전에 확인한다
+export const signupPaused = (db) => pausedOf(readDisk(db));
+export function diskStatus(db) {
+  const d = readDisk(db);
+  return { pct: d.pct ?? null, totalBytes: d.totalBytes ?? null, freeBytes: d.freeBytes ?? null, checkedAt: d.checkedAt ?? null, mode: d.mode || 'auto', autoPaused: !!d.autoPaused, signupPaused: pausedOf(d), ...diskLimits() };
+}
+export function setDiskMode(db, mode) {
+  saveDisk(db, { ...readDisk(db), mode });
+}
+
+const gb = (b) => `${(b / 1024 ** 3).toFixed(1)}GB`;
+function alertAdmins(db, cfg, { title, titleEn, body, bodyEn }) {
+  for (const u of db.prepare("SELECT id, email, lang FROM users WHERE is_admin=1 AND status NOT IN ('deleted','pending_delete')").all()) {
+    notify(db, u.id, { kind: 'admin', title, titleEn, body, bodyEn, link: '/admin/dashboard' });
+    const en = u.lang === 'en';
+    if (u.email) sendMessage(db, cfg, { channel: 'email', to: u.email, subject: en ? `[Mimic] ${titleEn}` : `[미믹] ${title}`, body: `${en ? bodyEn : body}\n${cfg.baseUrl}/admin/dashboard` });
+  }
+}
+
+// 10분마다(jobs) 그리고 관리자가 '지금 확인'을 누를 때. cfg.statfs 로 바꿔 끼울 수 있다(테스트)
+export function checkDisk(ctx) {
+  const { db, cfg } = ctx;
+  const s = (cfg.statfs || fs.statfsSync)(cfg.dataDir);
+  const totalBytes = s.blocks * s.bsize;
+  const freeBytes = s.bavail * s.bsize;
+  const pct = totalBytes ? Math.round((1 - freeBytes / totalBytes) * 1000) / 10 : 0;
+  const { alertPct, resumePct, urgentPct } = diskLimits();
+  const d = readDisk(db);
+  const wasPaused = pausedOf(d);
+  // 경보선 이상이면 멈추고, 재개선 미만으로 내려가야 다시 연다(그 사이는 그대로)
+  d.autoPaused = pct >= alertPct ? true : pct < resumePct ? false : !!d.autoPaused;
+  Object.assign(d, { pct, totalBytes, freeBytes, checkedAt: now() });
+  d.alerts ||= {};
+  const level = pct >= urgentPct ? 'urgent' : pct >= alertPct ? 'warn' : null;
+  const paused = pausedOf(d);
+  const left = `남은 공간 ${gb(freeBytes)} / ${gb(totalBytes)}`;
+  const leftEn = `${gb(freeBytes)} free of ${gb(totalBytes)}`;
+  const state = paused ? `새 가입을 멈췄어요(${resumePct}% 미만이 되면 자동으로 다시 열려요).` : '관리자 설정으로 새 가입은 열려 있어요.';
+  const stateEn = paused ? `New sign-ups are paused (they reopen automatically below ${resumePct}%).` : 'New sign-ups stay open because of the admin setting.';
+  // 같은 단계 경보는 24시간에 한 번
+  if (level && now() - (d.alerts[level] || 0) >= DAY) {
+    d.alerts[level] = now();
+    const urgent = level === 'urgent';
+    alertAdmins(db, cfg, {
+      title: `${urgent ? '[긴급] ' : ''}데이터 디스크 사용량 ${pct}%`,
+      titleEn: `${urgent ? '[Urgent] ' : ''}Data disk ${pct}% full`,
+      body: `${left}. ${state} ${urgent ? '곧 가득 찹니다. 지금 디스크를 늘리거나 정리해 주세요.' : '디스크를 늘리거나 정리해 주세요.'}`,
+      bodyEn: `${leftEn}. ${stateEn} ${urgent ? 'The disk will be full soon. Add or free up space now.' : 'Please add or free up disk space.'}`,
+    });
+  } else if (wasPaused && !paused) {
+    alertAdmins(db, cfg, {
+      title: '새 가입을 다시 열었어요',
+      titleEn: 'New sign-ups reopened',
+      body: `데이터 디스크 사용량이 ${pct}%로 내려가 새 가입을 자동으로 다시 열었어요. ${left}.`,
+      bodyEn: `Data disk usage dropped to ${pct}%, so new sign-ups reopened automatically. ${leftEn}.`,
+    });
+  }
+  saveDisk(db, d);
+  return diskStatus(db);
+}
+
+export const jobs = [{ name: 'admin:disk', everyMs: 10 * 60_000, run: checkDisk }];
+
 export function register(app, ctx) {
   const { db, cfg, events } = ctx;
   // 관리자 기능은 웹 로그인 세션으로만. 개인 액세스 토큰·연결 앱 토큰(CLI·MCP·WebDAV·텔레그램)은 scope 와 관계없이 막는다
@@ -137,7 +217,8 @@ export function register(app, ctx) {
     const amt = ['amount', 'price', 'total'].find((c) => cols.includes(c));
     const out = { table, total: db.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get().n };
     if (cols.includes('status')) {
-      out.byStatus = db.prepare(`SELECT status, COUNT(*) AS n${amt ? `, COALESCE(SUM("${amt}"),0) AS amount` : ''} FROM "${table}" GROUP BY status`).all();
+      const cur = amt && cols.includes('currency') ? ', currency' : ''; // 원화·달러(센트) 금액을 섞어 더하지 않게 통화별로
+      out.byStatus = db.prepare(`SELECT status${cur}, COUNT(*) AS n${amt ? `, COALESCE(SUM("${amt}"),0) AS amount` : ''} FROM "${table}" GROUP BY status${cur}`).all();
     }
     if (cols.includes('created_at')) out.last7d = db.prepare(`SELECT COUNT(*) AS n FROM "${table}" WHERE created_at>?`).get(now() - 7 * DAY).n;
     return out;
@@ -173,7 +254,20 @@ export function register(app, ctx) {
       orders: tableStats(findTable(/^billing_.*order/)),
       modules: Object.keys(ctx.modules),
       failedModules: ctx.failedModules,
+      disk: diskStatus(db),
+      seeding: ctx.modules.offline?.seedingStats?.(ctx) ?? null, // Q-6 시딩 현황
     });
+  });
+
+  // 디스크 경보(Q-5): mode 를 주면 가입 멈춤 수동 설정을 바꾸고, 언제나 디스크를 지금 다시 확인해 돌려준다
+  r('post', '/disk', (req, res) => {
+    const mode = req.body?.mode;
+    if (mode != null) {
+      if (!['auto', 'pause', 'resume'].includes(mode)) fail(400, 'invalid_mode', 'mode 는 auto·pause·resume 중 하나입니다');
+      setDiskMode(db, mode);
+      log(req, 'disk.mode', { mode });
+    }
+    res.json(checkDisk(ctx));
   });
 
   // ---------- 회원 ----------

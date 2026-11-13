@@ -9,10 +9,10 @@ import { lookup } from 'node:dns';
 import dns from 'node:dns/promises';
 import { spawn } from 'node:child_process';
 import { Readable } from 'node:stream';
-import parseTorrent from 'parse-torrent'; // webtorrent 의 의존성으로 함께 설치되어 있다
+import parseTorrent, { toTorrentFile } from 'parse-torrent'; // webtorrent 의 의존성으로 함께 설치되어 있다
 import { now, json, DAY, isPrivateIp } from '../../core/util.js';
 import { tx } from '../../core/db.js';
-import { ingestStream, ingestFile, hasBlob } from '../../core/storage.js';
+import { ingestStream, ingestFile, hasBlob, blobPath } from '../../core/storage.js';
 import { createFolder, createFileNode, getNode, usage, checkCapacity, validName } from '../../core/files.js';
 import { LIMITS, limitsFor, capacityOf, BT_MAX_FILES } from '../../core/plans.js';
 import { addUsage, checkTransfer } from '../../core/quota.js';
@@ -20,8 +20,12 @@ import { notify } from '../../core/notify.js';
 import { getSettings } from '../../core/auth.js';
 
 export const MAX_RUNNING = Number(process.env.MIMIC_OFFLINE_MAX_RUNNING || 10); // 서버 전체 동시 작업 상한
-// Q-6(미결정): "우리 클라우드 안에만" 원칙. 받는 동안 업로드를 이 속도로 제한하고(0 = 제한 없음), 완료 즉시 토렌트를 지워 시딩하지 않는다
-const BT_UPLOAD_KBPS = Number(process.env.MIMIC_BT_UPLOAD_KBPS ?? 64);
+// Q-6: 받은 토렌트는 일반 토렌트 클라이언트처럼 계속 시딩한다. 클라이언트 전체 업로드 속도 상한(KB/s, 0 = 제한 없음. 예전 이름 MIMIC_BT_UPLOAD_KBPS 도 읽음)과
+// 동시에 시딩하는 토렌트 수 상한(넘으면 오래된 것부터 멈춤)
+const SEED_UPLOAD_KBPS = Number(process.env.MIMIC_SEED_UPLOAD_KBPS ?? process.env.MIMIC_BT_UPLOAD_KBPS ?? 0);
+const SEED_MAX = Number(process.env.MIMIC_SEED_MAX || 200);
+// 시딩 파일 수 합계 상한: 시딩 파일마다 핸들을 하나씩 계속 열어 두므로(fs-chunk-store) 파일이 아주 많은 토렌트가 서버 전체의 파일 핸들을 다 쓰지 않게
+const SEED_MAX_FILES = Number(process.env.MIMIC_SEED_MAX_FILES || 20_000);
 // 이 시간 동안 받은 바이트가 없으면 실패(느린 링크·피어 없는 토렌트가 자리를 계속 차지하지 않게). cfg.offlineStallMs 로 덮어쓴다
 const STALL_MS = Number(process.env.MIMIC_OFFLINE_STALL_MS || 10 * 60_000);
 // 대기열을 볼 때 사용자마다 앞쪽 이만큼만 본다. 한 사용자가 대기 작업을 아무리 쌓아도 다른 사용자 작업이 밀리지 않는다
@@ -36,7 +40,8 @@ const err = (code) => Object.assign(new Error(code), { code });
 const blockedErr = (blockId) => Object.assign(err('blocked'), { blockId });
 // 중단 사유: 멈춤 감시(stalled)인지 사용자 취소인지
 const abortErr = (signal) => (signal.reason?.code === 'stalled' ? signal.reason : err('canceled'));
-const state = (ctx) => (ctx.offline ??= { running: new Map(), client: null, closed: false, kickPending: false });
+// seeds: 시딩 중인 infohash → { torrent, key(연결한 본문), sent(DB 에 더한 업로드 바이트) }, seedOp: 시딩 작업을 하나씩 차례로
+const state = (ctx) => (ctx.offline ??= { running: new Map(), client: null, closed: false, kickPending: false, seeds: new Map(), seedOp: Promise.resolve() });
 
 function update(db, id, patch) {
   const keys = Object.keys(patch);
@@ -125,6 +130,8 @@ export async function closeEngine(ctx) {
   st.closed = true;
   for (const r of st.running.values()) r.ac.abort();
   await Promise.allSettled([...st.running.values()].map((r) => r.p));
+  await st.seedOp;
+  flushUploaded(ctx);
   if (st.client) {
     const c = await st.client;
     await new Promise((r) => c.destroy(() => r()));
@@ -210,6 +217,7 @@ async function run(ctx, task, user, signal) {
     const result = await fetcher(ctx, task, user, AbortSignal.any([signal, stall.signal]), dir, bump);
     if (signal.aborted) throw err('canceled');
     finish(ctx, task.id, result);
+    if (result.seed) seedTorrent(ctx, result.seed); // 기다리지 않는다(오류는 syncSeeds 가 기록)
   } catch (e) {
     throw stall.signal.aborted && !/^[a-z_]+$/.test(e.code || '') ? err('stalled') : e;
   } finally {
@@ -299,6 +307,11 @@ function finish(ctx, taskId, { name, all, save, cached, cache }) {
   tx(db, () => {
     checkCapacity(db, user, bytes);
     const { rootId, ids, rootIsFolder } = saveTree(db, user.id, parentId, ok);
+    // Q-6: 이 토렌트로 만든 파일(즉시 완료 포함). 모두 완전히 지워지면 시딩을 멈춘다(같은 본문을 가진 다른 파일은 세지 않음)
+    if (task.cache_key.startsWith('bt:')) {
+      const own = db.prepare('INSERT OR IGNORE INTO offline_seed_files (file_id, info_hash) VALUES (?,?)');
+      for (const id of ids) own.run(id, task.cache_key.slice(3));
+    }
     addUsage(db, user.id, 'cloud', bytes, task.quota_source);
     // 즉시 완료(cached)는 기록을 그대로 둔다: 검증값이 없는 기록의 유효기간(하루)이 쓸 때마다 늘어나지 않게
     if (!cached) {
@@ -536,8 +549,8 @@ async function fetchUrl(ctx, task, user, signal, _dir, bump) {
 function btClient(ctx) {
   const st = state(ctx);
   st.client ??= import('webtorrent').then(({ default: WebTorrent }) => {
-    // Q-6: 업로드 속도 제한 기본 64KB/s(MIMIC_BT_UPLOAD_KBPS). cfg.bt 로 dht·lsd 등 옵션을 덮어쓸 수 있다(테스트는 끔)
-    const c = new WebTorrent({ utp: false, uploadLimit: BT_UPLOAD_KBPS > 0 ? BT_UPLOAD_KBPS * 1024 : -1, ...ctx.cfg.bt });
+    // Q-6: 받기·시딩이 한 클라이언트를 쓴다. 업로드 속도 상한은 MIMIC_SEED_UPLOAD_KBPS(기본 제한 없음). cfg.bt 로 dht·lsd 등 옵션을 덮어쓸 수 있다(테스트는 끔)
+    const c = new WebTorrent({ utp: false, uploadLimit: SEED_UPLOAD_KBPS > 0 ? SEED_UPLOAD_KBPS * 1024 : -1, ...ctx.cfg.bt });
     // A-01: 운영 모드에서는 tracker·DHT·PEX 가 알려 준 내부망·이름 주소 피어에 연결하지 않는다.
     // webtorrent 의 blocklist 옵션(ip-set)은 IPv4 만 보므로 피어를 거를 때 쓰는 blocked.contains 를 직접 단다
     // ponytail: DHT 질의(UDP)는 노드 주소를 거르지 않는다. 막아야 하면 cfg.bt 로 dht 를 끄거나 k-rpc 소켓을 감쌀 것
@@ -566,7 +579,11 @@ async function adoptTorrent(ctx, task, signal) {
 
 async function fetchTorrent(ctx, task, user, signal, dir, bump) {
   const { db, cfg } = ctx;
-  const parsed = await stripPrivate(cfg, await parseTorrent(task.kind === 'magnet' ? task.source : Buffer.from(task.torrent)));
+  const parsed = await parseTorrent(task.kind === 'magnet' ? task.source : Buffer.from(task.torrent));
+  const announce = [...(parsed.announce || [])]; // 시딩 기록에는 원래 tracker 를 남긴다(다시 켤 때 stripPrivate 를 새로 거침)
+  await stripPrivate(cfg, parsed);
+  // Q-6: 같은 토렌트를 시딩하고 있으면 받는 동안 멈춘다(한 클라이언트에 같은 infohash 를 둘 수 없음). 받은 뒤 다시 시딩한다
+  await serial(ctx, () => stopSeed(ctx, parsed.infoHash));
   const client = await btClient(ctx);
   let gotMeta = false;
   // 멈춤 감시에 걸렸을 때 토렌트 정보조차 못 받았으면 피어 없음
@@ -576,6 +593,7 @@ async function fetchTorrent(ctx, task, user, signal, dir, bump) {
   const report = reporter(ctx, task.id, bump);
   const torrent = client.add(parsed, { path: dir });
   let files;
+  let torrentFile;
   let stop;
   const onAbort = () => stop?.(why());
   try {
@@ -595,14 +613,144 @@ async function fetchTorrent(ctx, task, user, signal, dir, bump) {
       torrent.once('done', resolve);
     });
     files = torrent.files.map((f) => ({ path: f.path.split(/[\\/]/).join('/'), size: f.length, mime: f.type || null, disk: path.join(dir, f.path) }));
+    torrentFile = toTorrentFile({ info: torrent.info, announce });
   } finally {
     signal.removeEventListener('abort', onAbort);
-    // Q-6: 완료(또는 취소) 즉시 토렌트를 지워 시딩하지 않는다. 파일 핸들을 닫아야 저장소로 옮길 수 있다
+    // 파일 핸들을 닫아야 저장소로 옮길 수 있다. 시딩은 저장소 본문을 하드 링크한 시딩 폴더에서 다시 시작한다(seedTorrent)
     await new Promise((r) => torrent.destroy({ destroyStore: false }, () => r()));
   }
   const save = pickFiles(files, smartFilterOn(user));
   for (const f of save) Object.assign(f, await ingestFile(db, cfg, f.disk, f.mime)); // hash·size 채움
-  return { name: torrent.name, all: files, save };
+  const layout = files.map((f) => ({ path: f.path, size: f.size, hash: f.hash ?? null }));
+  return { name: torrent.name, all: files, save, seed: { infoHash: torrent.infoHash, torrent: torrentFile, files: layout } };
+}
+
+// ---------- 시딩(Q-6) ----------
+// 받은 본문(저장소)을 토렌트 원래 파일 배치대로 시딩 폴더에 하드 링크해 디스크를 두 배로 쓰지 않는다. offline_seeds 에 남겨 서버를 다시 켜도 이어서 시딩하고,
+// 그 토렌트의 파일을 모든 사용자가 완전히 지우거나 관리자가 infohash 를 차단하면 멈춘다. 받지 않은 파일(스마트 필터)이 있으면 가진 조각만 시딩한다(deselect: 받지 않음)
+const seedDir = (cfg, infoHash) => path.join(cfg.dataDir, 'seeding', infoHash);
+
+// files: [{ path('/' 구분), size, hash }]. hash 가 있으면 본문을 하드 링크(같은 디스크, 안 되면 복사하고 기록),
+// BEP 47 패딩은 0 으로 채운 파일로, 나머지(받지 않은 파일)는 두지 않는다. 폴더 밖을 가리키는 경로는 버린다
+export function linkLayout(cfg, dir, files) {
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+  for (const f of files) {
+    const dest = path.join(dir, ...f.path.split('/'));
+    if (!dest.startsWith(dir + path.sep) || (!f.hash && !isPadding(f))) continue;
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    if (!f.hash) {
+      fs.writeFileSync(dest, '');
+      fs.truncateSync(dest, f.size);
+      continue;
+    }
+    try {
+      fs.linkSync(blobPath(cfg, f.hash), dest);
+    } catch (e) {
+      console.warn(`[offline] 시딩 하드 링크 실패(${e.code}), 복사합니다: ${f.path}`);
+      fs.copyFileSync(blobPath(cfg, f.hash), dest);
+    }
+  }
+}
+
+// 시딩 작업은 하나씩 차례로(같은 infohash 를 클라이언트에 두 번 더하지 않게)
+function serial(ctx, fn) {
+  const st = state(ctx);
+  const p = st.seedOp.then(fn);
+  st.seedOp = p.catch(() => {});
+  return p;
+}
+
+// 받기를 마친 토렌트(run 이 finish 다음에 부름). 드라이브에 연결되지 않은 본문은 syncSeeds 가 빼거나 멈춘다
+function seedTorrent(ctx, { infoHash, torrent, files }) {
+  ctx.db
+    .prepare(
+      `INSERT INTO offline_seeds (info_hash, torrent, files, created_at) VALUES (?,?,?,?)
+       ON CONFLICT(info_hash) DO UPDATE SET torrent=excluded.torrent, files=excluded.files, created_at=excluded.created_at, stopped_at=NULL`,
+    )
+    .run(infoHash, torrent, JSON.stringify(files), now());
+  return syncSeeds(ctx);
+}
+
+// 서버가 켜질 때·1분마다·받기를 마칠 때: 기록과 실제 시딩을 맞추고 올려 준 바이트를 기록한다
+export const syncSeeds = (ctx) => serial(ctx, () => reconcile(ctx)).catch((e) => console.error('[offline] 시딩', e.message));
+
+// 본문을 모두 가진 배치는 조각을 다시 확인하지 않는다(skipVerify: 본문은 sha256 이름이고 받을 때 WebTorrent 가 확인함). 일부만 있으면 확인한다.
+// ponytail: 맞출 때마다 시딩 파일마다 참조를 조회한다. 파일 수가 아주 많아지면 파일을 완전히 지울 때 시딩 쪽에 알리는 방식으로
+async function reconcile(ctx) {
+  const { db, cfg } = ctx;
+  const st = state(ctx);
+  if (st.closed) return;
+  const rows = db.prepare('SELECT info_hash, files FROM offline_seeds WHERE stopped_at IS NULL ORDER BY created_at DESC, rowid DESC').all();
+  const busy = new Set(db.prepare("SELECT cache_key FROM offline_tasks WHERE status='running'").all().map((r) => r.cache_key));
+  // 이 토렌트로 만든 파일 중 그 본문을 가진 것이 남아 있는지(다른 토렌트·업로드의 같은 본문은 세지 않는다)
+  const used = db.prepare('SELECT 1 FROM files f JOIN offline_seed_files s ON s.file_id=f.id AND s.info_hash=? WHERE f.blob_hash=? LIMIT 1');
+  const blocked = db.prepare("SELECT 1 FROM blocklist WHERE kind='blob' AND value=?");
+  const max = cfg.seedMax ?? SEED_MAX;
+  const maxFiles = cfg.seedMaxFiles ?? SEED_MAX_FILES;
+  let kept = 0; // 남긴 시딩 수(이번에 멈춘 것은 세지 않는다)
+  let open = 0; // 남긴 시딩의 파일 수 합계
+  for (const row of rows) {
+    const ih = row.info_hash;
+    if (busy.has('bt:' + ih)) continue; // 같은 토렌트를 다시 받는 중(지금은 시딩하지 않으니 세지 않는다. 받은 뒤 다시 시딩)
+    try {
+      // 이 토렌트로 받은 파일이 모두 지워졌거나 차단된 본문은 시딩 폴더에서 뺀다(디스크를 계속 차지하지 않게)
+      const files = json(row.files, []).map((f) => (f.hash && used.get(ih, f.hash) && !blocked.get(f.hash) ? f : { ...f, hash: null }));
+      const n = files.filter((f) => f.hash || isPadding(f)).length;
+      if (kept >= max || open + n > maxFiles || !files.some((f) => f.hash) || findBlock(db, ih, null)) {
+        await dropSeed(ctx, ih);
+        continue;
+      }
+      kept++;
+      open += n;
+      const key = files.map((f) => f.hash).join();
+      const cur = st.seeds.get(ih);
+      if (cur && !cur.torrent.destroyed && cur.key === key) continue;
+      await stopSeed(ctx, ih);
+      linkLayout(cfg, seedDir(cfg, ih), files);
+      const { torrent } = db.prepare('SELECT torrent FROM offline_seeds WHERE info_hash=?').get(ih);
+      const parsed = await stripPrivate(cfg, await parseTorrent(Buffer.from(torrent))); // 운영 모드: 내부망 tracker 를 빼고 고정
+      const client = await btClient(ctx);
+      if (st.closed) return;
+      st.seeds.set(ih, { torrent: client.add(parsed, { path: seedDir(cfg, ih), deselect: true, skipVerify: n === files.length }), key, sent: 0 });
+    } catch (e) {
+      console.error(`[offline] 시딩 ${ih}: ${e.message}`); // 다음 맞추기에서 다시 시도
+    }
+  }
+  flushUploaded(ctx);
+}
+
+// 클라이언트에서만 뺀다(기록·시딩 폴더는 그대로)
+async function stopSeed(ctx, ih) {
+  const st = state(ctx);
+  const s = st.seeds.get(ih);
+  if (!s) return;
+  flushUploaded(ctx);
+  st.seeds.delete(ih);
+  if (!s.torrent.destroyed) await new Promise((r) => s.torrent.destroy({ destroyStore: false }, () => r()));
+}
+
+// 시딩을 끝낸다. 기록은 업로드 합계만 남기고(.torrent·배치는 비움), 같은 토렌트를 다시 받으면 seedTorrent 가 되살린다
+async function dropSeed(ctx, ih) {
+  await stopSeed(ctx, ih);
+  fs.rmSync(seedDir(ctx.cfg, ih), { recursive: true, force: true, maxRetries: 3 });
+  ctx.db.prepare("UPDATE offline_seeds SET stopped_at=?, torrent=x'', files='[]' WHERE info_hash=?").run(now(), ih);
+}
+
+function flushUploaded(ctx) {
+  const add = ctx.db.prepare('UPDATE offline_seeds SET uploaded=uploaded+? WHERE info_hash=?');
+  for (const [ih, s] of state(ctx).seeds) {
+    const d = s.torrent.uploaded - s.sent;
+    if (d > 0) {
+      add.run(d, ih);
+      s.sent += d;
+    }
+  }
+}
+
+// 관리자 통계: 시딩 중인 토렌트 수, 시딩으로 올려 준 바이트 합계(멈춘 것 포함)
+export function seedingStats(ctx) {
+  flushUploaded(ctx);
+  return ctx.db.prepare('SELECT COALESCE(SUM(stopped_at IS NULL),0) AS seeding, COALESCE(SUM(uploaded),0) AS uploaded FROM offline_seeds').get();
 }
 
 // ---------- SNS(A-04): yt-dlp ----------

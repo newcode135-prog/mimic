@@ -57,6 +57,34 @@ function autoTable(items, prefer, actions) {
   return table(actions ? [...cols, ''] : cols, items.map((x) => tr([...cols.map((k) => h('td', { class: 'ad-trunc', title: String(x[k] ?? '') }, fmt(k, x[k]))), ...(actions ? [actions(x)] : [])])));
 }
 
+// 데이터 디스크 경보·가입 멈춤(Q-5). 서버가 10분마다 확인하고, 여기서 수동으로 멈춤·허용을 고를 수 있다
+function diskCard(d, reload) {
+  if (!d) return '';
+  const post = (body) => api('/api/admin/disk', { method: 'POST', body }).then(reload, toastError);
+  const mode = select(
+    [
+      ['auto', t(`자동 (${d.alertPct}% 이상 멈춤 · ${d.resumePct}% 미만 재개)`, `Auto (pause at ${d.alertPct}%+, reopen below ${d.resumePct}%)`)],
+      ['pause', t('새 가입 멈춤 (수동)', 'Pause sign-ups (manual)')],
+      ['resume', t('새 가입 허용 (수동)', 'Allow sign-ups (manual)')],
+    ],
+    d.mode,
+  );
+  mode.onchange = () => post({ mode: mode.value });
+  return h(
+    'div',
+    { class: 'card', style: { marginBottom: '16px' } },
+    h('h3', {}, t('데이터 디스크', 'Data disk')),
+    h(
+      'div',
+      { class: 'ad-stats' },
+      stat(d.pct == null ? '—' : `${d.pct}%`, d.totalBytes ? t(`사용 중 · 남은 공간 ${formatBytes(d.freeBytes)} / ${formatBytes(d.totalBytes)}`, `Used · ${formatBytes(d.freeBytes)} free of ${formatBytes(d.totalBytes)}`) : t('아직 확인 전', 'Not checked yet'), d.pct >= d.alertPct),
+      stat(d.signupPaused ? t('가입 멈춤', 'Sign-ups paused') : t('정상', 'Normal'), t('새 가입 상태', 'New sign-ups'), d.signupPaused),
+    ),
+    h('div', { class: 'row' }, mode, h('button', { class: 'btn sm', onclick: () => post({}) }, t('지금 확인', 'Check now'))),
+    h('p', { class: 'muted small' }, d.checkedAt ? t(`마지막 확인 ${formatDate(d.checkedAt)} · ${d.urgentPct}% 이상이면 긴급 경보`, `Last checked ${formatDate(d.checkedAt)} · urgent alert at ${d.urgentPct}%+`) : t(`${d.urgentPct}% 이상이면 긴급 경보`, `Urgent alert at ${d.urgentPct}%+`)),
+  );
+}
+
 // ---------- 대시보드 + 공지 발송 ----------
 async function dashboard(root) {
   const [s, bs] = await Promise.all([api('/api/admin/stats'), optional('/api/admin/billing/stats').catch(() => null)]);
@@ -64,7 +92,7 @@ async function dashboard(root) {
   const st = s.storage;
   const statusTable = (x, label) =>
     x
-      ? h('div', { class: 'card' }, h('h3', {}, `${label} (${x.table})`), h('p', { class: 'muted small' }, `전체 ${n(x.total)}건${x.last7d != null ? ` · 최근 7일 ${n(x.last7d)}건` : ''}`), x.byStatus ? table(['상태', '건수', '금액'], x.byStatus.map((r) => tr([r.status, n(r.n), r.amount != null ? formatWon(r.amount) : '—']))) : null)
+      ? h('div', { class: 'card' }, h('h3', {}, `${label} (${x.table})`), h('p', { class: 'muted small' }, `전체 ${n(x.total)}건${x.last7d != null ? ` · 최근 7일 ${n(x.last7d)}건` : ''}`), x.byStatus ? table(['상태', '건수', '금액'], x.byStatus.map((r) => tr([r.currency ? `${r.status} · ${r.currency}` : r.status, n(r.n), r.amount != null ? money(r.amount, r.currency) : '—']))) : null)
       : h('div', { class: 'card' }, h('h3', {}, label), h('p', { class: 'muted' }, '아직 테이블이 없습니다.'));
 
   const f = { target: select([['all', '전체 회원'], ['user', '특정 회원']], 'all'), userId: input({ placeholder: '회원 ID' }), title: input({ maxlength: 100 }), body: h('textarea', { class: 'input', rows: 3, maxlength: 2000 }), titleEn: input({ maxlength: 100 }), bodyEn: h('textarea', { class: 'input', rows: 2, maxlength: 2000 }), link: input({ placeholder: '/drive/all 또는 https://…' }), email: h('input', { type: 'checkbox' }) };
@@ -85,6 +113,7 @@ async function dashboard(root) {
 
   root.replaceChildren(
     head(t('대시보드', 'Dashboard'), h('button', { class: 'btn sm', onclick: () => dashboard(root).catch(toastError), html: `${icon('refresh')}<span>${t('새로 고침', 'Refresh')}</span>` })),
+    diskCard(s.disk, () => dashboard(root).catch(toastError)),
     h(
       'div',
       { class: 'ad-stats' },
@@ -93,6 +122,7 @@ async function dashboard(root) {
       stat(n(u.active7d), t('7일 내 로그인', 'Active (7d)')),
       stat(n(u.premium), t('프리미엄', 'Premium')),
       stat(n(u.suspended), t('정지 중', 'Suspended'), u.suspended > 0),
+      s.seeding ? stat(`${n(s.seeding.seeding)} · ${formatBytes(s.seeding.uploaded)}`, t('시딩 중 · 시딩 업로드 합계', 'Seeding · total uploaded')) : '',
       stat(n(u.pendingDelete), t('탈퇴 유예 중', 'Pending deletion')),
       stat(formatBytes(st.logicalBytes), t(`사용자 저장량 (파일 ${n(st.files)}개)`, `User storage (${n(st.files)} files)`)),
       stat(formatBytes(st.physicalBytes), t(`실제 디스크 (blob ${n(st.blobs)}개)`, `Disk used (${n(st.blobs)} blobs)`)),
@@ -109,10 +139,14 @@ async function dashboard(root) {
           stat(formatWon(bs.revenue.today), '오늘 매출'),
           stat(formatWon(bs.revenue.month), '이번 달 매출'),
           stat(formatWon(bs.revenue.refunded), '환불액'),
+          // 해외(달러) 매출은 원화와 따로 센다
+          bs.revenueUsd?.total || bs.revenueUsd?.refunded
+            ? stat(`${money(bs.revenueUsd.month, 'USD')} / ${money(bs.revenueUsd.refunded, 'USD')}`, t(`이번 달 달러 매출 / 환불 (환율 ₩${n(bs.fx?.rate)}${bs.fx?.date ? ` · ${bs.fx.date}` : ''})`, `USD revenue this month / refunds (rate ₩${n(bs.fx?.rate)}${bs.fx?.date ? ` · ${bs.fx.date}` : ''})`))
+            : '',
           stat(n(bs.orders.refundRequested), '환불 요청', bs.orders.refundRequested > 0),
           stat(`${n(bs.subscriptions.active)} (자동 ${n(bs.subscriptions.autoRenew)})`, '활성 구독'),
           stat(`${n(bs.coupons.redeemed)} / ${n(bs.coupons.issued)}`, '쿠폰 사용 / 발급'),
-          h('a', { href: '/admin/pro', style: { display: 'contents' } }, stat(n(bs.proPending), '추천 Pro 신청 대기', bs.proPending > 0)),
+          h('a', { href: '/admin/pro', style: { display: 'contents' } }, stat(n(bs.withdrawalsPending), t('추천 Pro 출금 대기', 'Pending Pro withdrawals'), bs.withdrawalsPending > 0)),
         )
       : '',
     h('div', { class: 'ad-cols' }, statusTable(s.tasks, '클라우드 다운로드 작업'), statusTable(s.orders, '주문')),
@@ -214,7 +248,7 @@ async function userDetail(id, reload) {
     ]),
     d.sessions.length ? h('div', {}, h('b', {}, '로그인 세션'), table(['기기', 'IP', '마지막 접속'], d.sessions.map((s) => tr([s.device || '', s.ip || '', formatDate(s.lastSeenAt)])))) : null,
     d.grants.length ? h('div', {}, h('b', {}, '추가 쿼터 지급 내역'), table(['종류', '양', '기간', '사유'], d.grants.map((g) => tr([g.kind, g.kind === 'cloud_count' ? `${g.amount}회` : formatBytes(g.amount), `${formatDate(g.validFrom, false)} ~ ${g.validTo ? formatDate(g.validTo, false) : '상시'}`, g.reason])))) : null,
-    d.orders?.recent?.length ? h('div', {}, h('b', {}, '최근 주문'), autoTable(d.orders.recent, ['id', 'product_id', 'amount', 'status', 'created_at'])) : null,
+    d.orders?.recent?.length ? h('div', {}, h('b', {}, '최근 주문'), autoTable(d.orders.recent, ['id', 'product_id', 'amount', 'currency', 'status', 'created_at'])) : null,
     h(
       'div',
       { class: 'ad-actions' },
@@ -347,6 +381,8 @@ async function userDetail(id, reload) {
 }
 
 // ---------- 결제·환불(billing 모듈 API: GET /api/admin/billing/orders?status=, POST …/:id/refund {note}) ----------
+// 주문 금액은 최소 단위(원·센트), currency 는 KRW | USD
+const money = (v, currency) => (currency === 'USD' ? `$${(Number(v || 0) / 100).toFixed(2)}` : formatWon(v));
 const ORDER_STATUS = [['', '모든 상태'], ['paid', '결제 완료'], ['refund_requested', '환불 요청'], ['refunded', '환불됨'], ['pending', '결제 대기'], ['failed', '실패']];
 async function orders(root, ctx) {
   const out = h('div');
@@ -367,7 +403,7 @@ async function orders(root, ctx) {
             h('span', { class: 'ad-mono' }, o.id, o.testMode ? h('span', { class: 'badge', style: { marginLeft: '4px' } }, '테스트') : null, o.archived ? h('span', { class: 'badge', style: { marginLeft: '4px' }, title: formatDate(o.archivedAt) }, t('보관', 'Archived')) : null),
             o.user || o.userId || '',
             o.label || o.productId || '',
-            typeof o.amount === 'number' ? formatWon(o.amount) : '',
+            typeof o.amount === 'number' ? money(o.amount, o.currency) : '',
             o.method || '',
             h('span', { class: `badge ${o.status === 'refunded' ? 'danger' : o.status === 'refund_requested' ? 'accent' : o.status === 'paid' ? 'brand' : ''}`, title: o.refundReason || '' }, ORDER_STATUS.find(([v]) => v === o.status)?.[1] || o.status),
             formatDate(o.paidAt || o.createdAt),
@@ -383,7 +419,7 @@ async function orders(root, ctx) {
   await load();
 }
 async function refund(o, reload) {
-  const note = await promptDialog('환불', { label: `주문 ${o.id} (${formatWon(o.amount)}) 를 환불하고 남은 혜택을 회수합니다.${o.refundReason ? ` 요청 사유: ${o.refundReason}` : ''} 처리 메모를 적어 주세요.`, okLabel: '환불하기' });
+  const note = await promptDialog('환불', { label: `주문 ${o.id} (${money(o.amount, o.currency)}) 를 환불하고 남은 혜택을 회수합니다.${o.refundReason ? ` 요청 사유: ${o.refundReason}` : ''} 처리 메모를 적어 주세요.`, okLabel: '환불하기' });
   if (note == null) return;
   try {
     await api(`/api/admin/billing/orders/${encodeURIComponent(o.id)}/refund`, { method: 'POST', body: { note } });
@@ -436,20 +472,20 @@ async function coupons(root, ctx) {
   await load();
 }
 
-// ---------- 추천 보상: Pro 신청(I-05) + 초대 보상 검토(I-04) ----------
+// ---------- 추천 보상: Pro 출금·설정(I-05) + 초대 보상 검토(I-04) ----------
 async function pro(root, ctx) {
-  const tab = ctx.query.tab === 'invites' ? 'invites' : 'apps';
+  const tab = ctx.query.tab === 'invites' ? 'invites' : 'withdrawals';
   const tabs = h(
     'nav',
     { class: 'tabs' },
     ...[
-      ['apps', '/admin/pro', t('추천 보상 Pro 신청', 'Referral Pro applications')],
+      ['withdrawals', '/admin/pro', t('추천 보상 Pro 출금', 'Referral Pro withdrawals')],
       ['invites', '/admin/pro?tab=invites', t('초대 보상 검토', 'Invite reward review')],
     ].map(([k, href, label]) => h('a', { href, class: k === tab ? 'active' : '' }, label)),
   );
   const box = h('div');
   root.replaceChildren(head(t('추천 보상', 'Referral rewards')), tabs, box);
-  await (tab === 'invites' ? invites(box, ctx) : proApplications(box));
+  await (tab === 'invites' ? invites(box, ctx) : proWithdrawals(box, ctx));
 }
 
 // 초대 검토(billing 모듈 API: GET /api/admin/billing/invites[?suspicious=1], POST …/:inviteeId {action: release|revoke} → {rewardDays})
@@ -472,8 +508,9 @@ async function invites(box, ctx) {
       if (!ok) return;
       try {
         const res = await api(`/api/admin/billing/invites/${encodeURIComponent(x.inviteeId)}`, { method: 'POST', body: { action } });
-        const d = `${res.rewardDays > 0 ? '+' : ''}${n(res.rewardDays)}`;
-        toast(t(`처리했습니다 (보상 ${d}일)`, `Done (reward ${d} days)`), 'ok');
+        const sign = (v) => (v > 0 ? '+' : v < 0 ? '−' : '');
+        const cash = Object.entries(res.rewardCash || {}).map(([cur, v]) => ` · ${sign(v)}${money(Math.abs(v), cur)}`).join('');
+        toast(t(`처리했습니다 (보상 ${sign(res.rewardDays)}${n(Math.abs(res.rewardDays))}일${cash})`, `Done (reward ${sign(res.rewardDays)}${n(Math.abs(res.rewardDays))} days${cash})`), 'ok');
         load();
       } catch (e) {
         toastError(e);
@@ -489,7 +526,7 @@ async function invites(box, ctx) {
             x.invitee || x.inviteeId,
             x.via === 'signup' ? t('초대 링크로 가입', 'Signup via link') : t('초대 코드 입력', 'Invite code'),
             t(`${n(x.purchaseDays)}일`, `${n(x.purchaseDays)} days`),
-            t(`${n(x.rewardDays)}일`, `${n(x.rewardDays)} days`),
+            t(`${n(x.rewardDays)}일`, `${n(x.rewardDays)} days`) + (x.rewardCash ? ` · ${money(x.rewardCash, x.cashCurrency)}` : ''),
             formatDate(x.createdAt),
             h('span', { class: `badge ${cls}` }, t(ko, en)),
             h(
@@ -512,19 +549,47 @@ async function invites(box, ctx) {
   await load();
 }
 
-// Pro 신청(billing 모듈 API: GET /api/admin/billing/pro-applications, POST …/:id {status, note})
-const PRO_STATUS = { pending: ['심사 대기', 'accent'], approved: ['승인', 'brand'], rejected: ['반려', 'danger'] };
-async function proApplications(box) {
+// Pro 출금 요청·설정(billing 모듈 API: GET/POST /api/admin/billing/referral-pro {cashPercent, minWithdraw: {KRW, USD}},
+// GET /api/admin/billing/withdrawals?status=, POST …/withdrawals/:id {status: paid|rejected, note}). 금액은 최소 단위(원·센트)
+const WD_STATUS = [['pending', '처리 대기', 'Pending', 'accent'], ['paid', '보냄', 'Sent', 'brand'], ['rejected', '반려', 'Rejected', 'danger'], ['', '전체', 'All', '']];
+async function proWithdrawals(box, ctx) {
+  const settings = h('div');
   const out = h('div');
+  const filter = select(WD_STATUS.map(([v, ko, en]) => [v, t(ko, en)]), ctx.query.status ?? 'pending');
+  const loadSettings = async () => {
+    const s = await optional('/api/admin/billing/referral-pro');
+    if (!s) return settings.replaceChildren(soon('추천 보상 Pro 설정'));
+    const f = { pct: input({ type: 'number', min: 0, max: 100, value: s.cashPercent }), krw: input({ type: 'number', min: 1, value: s.minWithdraw.KRW }), usd: input({ type: 'number', min: 0.01, step: '0.01', value: (s.minWithdraw.USD / 100).toFixed(2) }) };
+    const save = h('button', { class: 'btn primary' }, t('저장', 'Save'));
+    save.onclick = () =>
+      api('/api/admin/billing/referral-pro', { method: 'POST', body: { cashPercent: Number(f.pct.value), minWithdraw: { KRW: Number(f.krw.value), USD: Math.round(Number(f.usd.value) * 100) } } })
+        .then(() => (toast(t('저장했습니다', 'Saved'), 'ok'), loadSettings()))
+        .catch(toastError);
+    settings.replaceChildren(
+      h(
+        'div',
+        { class: 'card', style: { marginBottom: '16px' } },
+        h('h3', {}, t(`추천 보상 Pro 설정 (Pro 회원 ${n(s.members)}명)`, `Referral Pro settings (${n(s.members)} members)`)),
+        h('div', { class: 'ad-toolbar' }, field(t('현금 보상 비율(%)', 'Cash reward (%)'), f.pct), field(t('출금 최소 금액(원)', 'Minimum withdrawal (KRW)'), f.krw), field(t('출금 최소 금액(달러)', 'Minimum withdrawal (USD)'), f.usd), save),
+        h('p', { class: 'muted small' }, t('비율은 바꾼 뒤의 친구 결제부터 적용됩니다. 회원은 초대 화면에서 승인 없이 스스로 Pro 로 전환하며, 전환은 되돌릴 수 없습니다.', 'The rate applies to friend payments made after the change. Members upgrade to Pro themselves on the invite page with no approval, and the upgrade cannot be undone.')),
+      ),
+    );
+  };
   const load = async () => {
-    const r = await optional('/api/admin/billing/pro-applications');
-    if (!r) return out.replaceChildren(soon('추천 보상 Pro 신청'));
-    const decide = async (a, status) => {
-      const note = await promptDialog(status === 'approved' ? '승인' : '반려', { label: `${a.user} 님에게 결과와 함께 보낼 메모${status === 'rejected' ? '(반려 사유)' : '(선택)'}`, okLabel: status === 'approved' ? '승인' : '반려' });
+    const r = await optional(`/api/admin/billing/withdrawals?status=${filter.value}`);
+    if (!r) return out.replaceChildren(soon('추천 보상 Pro 출금'));
+    const decide = async (w, status) => {
+      const paid = status === 'paid';
+      const note = await promptDialog(paid ? t('보냄으로 표시', 'Mark as sent') : t('반려', 'Reject'), {
+        label: paid
+          ? t(`${money(w.amount, w.currency)}을 ${w.user} 님에게 미믹 밖에서 보낸 뒤 표시하세요. 회원에게 보낼 메모(선택)`, `Mark this only after sending ${money(w.amount, w.currency)} to ${w.user} outside Mimic. Note to the member (optional)`)
+          : t(`반려하면 금액이 회원의 출금 가능 잔액으로 돌아갑니다. 반려 사유`, 'The amount goes back to the member’s available balance. Reason'),
+        okLabel: paid ? t('보냄', 'Sent') : t('반려', 'Reject'),
+      });
       if (note == null) return;
       try {
-        await api(`/api/admin/billing/pro-applications/${encodeURIComponent(a.id)}`, { method: 'POST', body: { status, note } });
-        toast('처리하고 신청자에게 알렸습니다', 'ok');
+        await api(`/api/admin/billing/withdrawals/${encodeURIComponent(w.id)}`, { method: 'POST', body: { status, note } });
+        toast(t('처리하고 회원에게 알렸습니다', 'Done; the member was notified'), 'ok');
         load();
       } catch (e) {
         toastError(e);
@@ -532,24 +597,29 @@ async function proApplications(box) {
     };
     out.replaceChildren(
       table(
-        ['신청자', '채널', '규모', '연락처', '신청', '상태', ''],
-        listOf(r).map((a) => {
-          const [label, cls] = PRO_STATUS[a.status] || [a.status, ''];
+        [t('회원', 'Member'), t('금액', 'Amount'), t('받을 곳', 'Send to'), t('요청', 'Requested'), t('상태', 'Status'), ''],
+        listOf(r).map((w) => {
+          const [, ko, en, cls] = WD_STATUS.find(([v]) => v === w.status) || [w.status, w.status, w.status, ''];
           return tr([
-            a.user || a.userId,
-            h('div', { class: 'ad-trunc', title: a.channel || '' }, a.channel || ''),
-            a.audience || '',
-            a.contact || '',
-            formatDate(a.createdAt),
-            h('span', { class: `badge ${cls}`, title: a.note || '' }, label, a.note ? ` · ${short(a.note, 30)}` : ''),
-            a.status === 'pending' ? h('div', { class: 'row' }, h('button', { class: 'btn sm primary', onclick: () => decide(a, 'approved') }, '승인'), h('button', { class: 'btn sm danger', onclick: () => decide(a, 'rejected') }, '반려')) : '',
+            w.user || w.userId,
+            h('span', {}, money(w.amount, w.currency), w.available < 0 ? h('span', { class: 'badge danger', title: t('요청 뒤 친구 결제가 환불·회수되어 잔액이 모자랍니다. 반려해 주세요.', 'A friend’s payment was refunded or revoked after this request, so the balance is short. Please reject it.') }, ` ${t('잔액 부족', 'Balance short')} ${money(w.available, w.currency)}`) : ''),
+            h('div', { class: 'ad-trunc', title: w.payout }, w.payout),
+            formatDate(w.createdAt),
+            h('span', { class: `badge ${cls}`, title: w.note || '' }, t(ko, en), w.note ? ` · ${short(w.note, 30)}` : ''),
+            w.status === 'pending' ? h('div', { class: 'row' }, h('button', { class: 'btn sm primary', onclick: () => decide(w, 'paid') }, t('보냄', 'Sent')), h('button', { class: 'btn sm danger', onclick: () => decide(w, 'rejected') }, t('반려', 'Reject'))) : '',
           ]);
         }),
       ),
     );
   };
-  box.replaceChildren(h('p', { class: 'muted' }, t('승인·반려하면 신청자에게 사이트 알림과 이메일로 결과와 메모가 갑니다.', 'Approving or rejecting sends the result and note to the applicant by site notification and email.')), out);
-  await load();
+  filter.onchange = () => load().catch(toastError);
+  box.replaceChildren(
+    settings,
+    h('p', { class: 'muted' }, t('실제 송금은 회사가 미믹 밖(PayPal·은행)에서 합니다. 보낸 뒤 "보냄"으로, 보낼 수 없으면 사유와 함께 "반려"로 표시하세요. 결과와 메모는 회원에게 알림과 이메일로 갑니다.', 'The company sends the money outside Mimic (PayPal or bank). Mark a request "Sent" after paying, or "Reject" with a reason. The member gets the result and note by notification and email.')),
+    h('div', { class: 'ad-toolbar' }, filter),
+    out,
+  );
+  await Promise.all([loadSettings(), load()]);
 }
 
 // ---------- 신고·문의·이의제기·피드백 ----------

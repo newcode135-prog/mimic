@@ -47,7 +47,7 @@
     { "id": "A-01", "area": "A", "module": "offline", "priority": "P0", "verification": "로그인 확인", "status": "done", "title": "마그넷 링크 저장", "rule": "\"클라우드 다운로드 작업 생성\" 창에 붙여넣기, 줄바꿈으로 여러 개 한 번에, 저장 폴더 지정" },
     { "id": "A-02", "area": "A", "module": "offline", "priority": "P0", "verification": "로그인 확인", "status": "done", "title": "토렌트 파일 저장", "rule": ".torrent 파일 선택. BT 작업당 최대 7,000개 파일, 개별 파일 선택 불가" },
     { "id": "A-03", "area": "A", "module": "offline", "priority": "P0", "verification": "공식", "status": "done", "title": "URL 직접 링크 저장", "rule": "HTTP(S) 파일 링크를 서버가 받음" },
-    { "id": "A-04", "area": "A", "module": "offline", "priority": "P1", "verification": "로그인 확인", "status": "partial", "note": "yt-dlp 를 서버에 설치해야 SNS 링크가 받아짐(YTDLP_PATH)", "title": "SNS 게시물 미디어 저장", "rule": "YouTube·X(트위터)·TikTok·Facebook 공유 링크에서 미디어 추출(yt-dlp)" },
+    { "id": "A-04", "area": "A", "module": "offline", "priority": "P1", "verification": "로그인 확인", "status": "done", "title": "SNS 게시물 미디어 저장", "rule": "YouTube·X(트위터)·TikTok·Facebook 공유 링크에서 미디어 추출(yt-dlp)" },
     { "id": "A-05", "area": "A", "module": "offline", "priority": "P0", "verification": "공식", "status": "done", "title": "백그라운드 서버 다운로드", "rule": "사용자 기기가 꺼져 있어도 서버에서 계속 진행" },
     { "id": "A-06", "area": "A", "module": "offline", "priority": "P0", "verification": "공식", "status": "done", "title": "즉시 완료(중복 제거)", "rule": "같은 파일(해시·infohash)이 서버에 있으면 받지 않고 즉시 사용자 드라이브에 연결" },
     { "id": "A-07", "area": "A", "module": "offline", "priority": "P0", "verification": "로그인 확인", "status": "done", "title": "전송 작업 패널", "rule": "오른쪽 아래 패널, 탭 3개(클라우드 다운로드·업로드·다운로드), 진행률·상태·실패 사유, 남은 무료 횟수 + \"횟수 추가\" 버튼" },
@@ -113,7 +113,7 @@
     { "id": "I-02", "area": "I", "module": "billing", "priority": "P1", "verification": "공식", "status": "done", "title": "추가 저장공간", "rule": "웹에서만 구매, 프리미엄 만료 시 동결" },
     { "id": "I-03", "area": "I", "module": "billing", "priority": "P1", "verification": "로그인 확인", "status": "done", "title": "쿠폰(리딤) 코드", "rule": "상단 \"쿠폰 코드\" 등록 창, 코드 구매 링크, iOS 앱 사용 불가" },
     { "id": "I-04", "area": "I", "module": "billing", "priority": "P1", "verification": "로그인 확인", "status": "done", "title": "초대 보상", "rule": "구매 일수 35% 지급, 월 10명 구매마다 업로드 100GB(최대 5TB), 초대 방식 3가지, 12시간 내 관계 설정, 초대 기록" },
-    { "id": "I-05", "area": "I", "module": "billing", "priority": "P2", "verification": "미확인", "status": "partial", "note": "추천 보상 Pro 세부 조건(PikPak) 미확인 — 결정 필요", "title": "추천 보상 Pro", "rule": "현금 보상형 상위 프로그램(조건 미확인)" },
+    { "id": "I-05", "area": "I", "module": "billing", "priority": "P2", "verification": "미확인", "status": "done", "title": "추천 보상 Pro", "rule": "현금 보상형 상위 프로그램(조건 미확인)" },
     { "id": "I-06", "area": "I", "module": "billing", "priority": "P2", "verification": "로그인 확인", "status": "done", "title": "출석 체크", "rule": "브라우저 확장에서 매일 출석해 무료 프리미엄" },
 
     { "id": "J-01", "area": "J", "module": "admin-content", "priority": "P0", "verification": "공식", "status": "done", "title": "신고·이의제기", "rule": "콘텐츠 침해 신고, 차단 이의제기" },
@@ -129,7 +129,7 @@
     { "id": "K-06", "area": "K", "module": "admin-content", "priority": "P0", "verification": "미확인", "status": "done", "title": "관리자(백오피스)", "rule": "회원·결제·환불·쿠폰 발급·신고·차단·쿼터 정책·통계. 외부에서 볼 수 없어 미믹 기준으로 새로 설계" },
     { "id": "K-07", "area": "K", "module": "integrations", "priority": "P1", "verification": "로그인 확인", "status": "done", "title": "환경설정", "rule": "기본·전송·액세스 및 통합 3개 탭" },
     { "id": "K-08", "area": "K", "module": "drive", "priority": "P1", "verification": "로그인 확인", "status": "done", "title": "온보딩 기본 콘텐츠", "rule": "신규 계정에 기본 폴더 \"My Pack\"과 미믹 자체 튜토리얼 영상, 무료 클라우드 다운로드 보너스 2회" },
-    { "id": "K-09", "area": "K", "module": "platforms", "priority": "P1", "verification": "앱 소개", "status": "partial", "note": "데스크톱·모바일 설치 파일은 아직 빌드·서명 전", "title": "플랫폼별 설치본", "rule": "Windows(10·11, 구버전 별도), macOS(Apple 칩·Intel), Android(APK·Google Play·Galaxy Store), TV 전용 APK" }
+    { "id": "K-09", "area": "K", "module": "platforms", "priority": "P1", "verification": "앱 소개", "status": "partial", "note": "윈도우(최신·구버전)·맥(Apple 칩·Intel) 설치 파일은 GitHub Actions 로 자동 빌드(코드 서명 전). 안드로이드·TV 앱은 도메인 확정 후", "title": "플랫폼별 설치본", "rule": "Windows(10·11, 구버전 별도), macOS(Apple 칩·Intel), Android(APK·Google Play·Galaxy Store), TV 전용 APK" }
   ],
   "decisions": [
     { "id": "Q-1", "title": "토렌트 기능의 국내 법적 분류", "detail": "공유 기능과 결합 시 특수유형 부가통신사업자(웹하드) 등록·기술적 필터링 의무 대상인지 변호사 검토. A-01·A-02·D-* 범위에 영향", "status": "decided", "answer": "검토 없이 진행(2026-11-13 사용자 결정). 신고·저작권 차단·필터링 기능은 갖춤. 등록 의무 대상이면 과태료 위험이 있음을 알림" },

@@ -31,14 +31,14 @@ test('billing: 결제·혜택·쿼터', async (t) => {
     assert.equal(r.status, 200);
     assert.equal(r.body.testMode, true);
     assert.equal(r.body.available, true);
-    assert.deepEqual(r.body.methods, ['card', 'paypal', 'alipay', 'unionpay']); // 암호화폐 보류(8-4)
+    assert.deepEqual(r.body.methods, ['card']); // 국내(원화)는 카드. 해외 수단은 billing-global.test.js, 암호화폐 보류(8-4)
     const m = r.body.products.find((p) => p.id === 'sub_month');
     assert.equal(m.firstDiscount, true);
-    assert.equal(m.payNow, 6256);
-    assert.equal(m.price, 9591);
-    assert.equal(r.body.products.find((p) => p.id === 'sub_year').payNow, 62417);
-    assert.equal(r.body.products.find((p) => p.id === 'once_month').payNow, 10125);
-    assert.equal(r.body.products.find((p) => p.id === 'once_year').payNow, 69354);
+    assert.equal(m.payNow, 6254);
+    assert.equal(m.price, 9587);
+    assert.equal(r.body.products.find((p) => p.id === 'sub_year').payNow, 62389);
+    assert.equal(r.body.products.find((p) => p.id === 'once_month').payNow, 10120);
+    assert.equal(r.body.products.find((p) => p.id === 'once_year').payNow, 69323);
     assert.equal(r.body.compare.premium.length, 10);
     assert.equal(r.body.compare.tier.length, 4);
     const reg = createUser(db, { tier: 'regional' });
@@ -55,7 +55,7 @@ test('billing: 결제·혜택·쿼터', async (t) => {
     assert.equal(failed.confirm.body.status, 'failed');
     assert.equal(isPremium(user(u.id)), false);
     const ok = await buy(c, 'sub_month');
-    assert.equal(ok.order.amount, 6256);
+    assert.equal(ok.order.amount, 6254);
     assert.equal(ok.confirm.body.status, 'paid');
     assert.equal(isPremium(user(u.id)), true);
     assert.equal((await c.post(`/api/billing/orders/${ok.order.orderId}/confirm`, { result: 'success' })).status, 409);
@@ -93,13 +93,13 @@ test('billing: 결제·혜택·쿼터', async (t) => {
     const cv = as(v);
     const a1 = (await cv.post('/api/billing/orders', { productId: 'sub_month', method: 'card' })).body;
     const a2 = (await cv.post('/api/billing/orders', { productId: 'sub_month', method: 'card' })).body;
-    assert.equal(a2.amount, 6256);
+    assert.equal(a2.amount, 6254);
     await cv.post(`/api/billing/orders/${a1.orderId}/confirm`, { result: 'success' });
     const sub = db.prepare('SELECT id FROM billing_subscriptions WHERE user_id=?').get(v.id);
     await cv.post(`/api/billing/subscriptions/${sub.id}/cancel`);
     assert.equal((await cv.post(`/api/billing/orders/${a2.orderId}/confirm`, { result: 'success' })).status, 409);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM billing_orders WHERE user_id=? AND status='paid' AND first_discount=1").get(v.id).n, 1);
-    assert.equal((await cv.post('/api/billing/orders', { productId: 'sub_month', method: 'card' })).body.amount, 9591); // 다시 주문하면 정가
+    assert.equal((await cv.post('/api/billing/orders', { productId: 'sub_month', method: 'card' })).body.amount, 9587); // 다시 주문하면 정가
   });
 
   await t.test('[I-01] 갱신 7일 전 안내·정가 자동 결제·해지하면 기간 끝에 종료', async () => {
@@ -113,7 +113,7 @@ test('billing: 결제·혜택·쿼터', async (t) => {
     const before = sub.next_charge_at;
     await runRenewals(ctx, before + 1000);
     const renewal = db.prepare('SELECT * FROM billing_orders WHERE user_id=? AND renewal=1').get(u.id);
-    assert.equal(renewal.amount, 9591);
+    assert.equal(renewal.amount, 9587);
     assert.equal(renewal.status, 'paid');
     sub = db.prepare('SELECT * FROM billing_subscriptions WHERE id=?').get(sub.id);
     assert.ok(sub.next_charge_at >= before + 30 * DAY);
@@ -129,7 +129,7 @@ test('billing: 결제·혜택·쿼터', async (t) => {
     await buy(c, 'sub_month');
     const until1 = user(u.id).premium_until;
     const once = await buy(c, 'once_month');
-    assert.equal(once.order.amount, 10125);
+    assert.equal(once.order.amount, 10120);
     assert.equal(user(u.id).premium_until, until1 + 30 * DAY);
     assert.equal(db.prepare('SELECT next_charge_at FROM billing_subscriptions WHERE user_id=?').get(u.id).next_charge_at, until1 + 30 * DAY);
     assert.equal((await c.post(`/api/billing/orders/${once.order.orderId}/refund-request`, {})).status, 400);
@@ -144,7 +144,7 @@ test('billing: 결제·혜택·쿼터', async (t) => {
     assert.ok(db.prepare("SELECT 1 FROM notifications WHERE user_id=? AND title LIKE '%환불%'").get(u.id));
     const st = await A.get('/api/admin/billing/stats');
     assert.ok(st.body.revenue.total > 0);
-    assert.ok(st.body.revenue.refunded >= 10125);
+    assert.ok(st.body.revenue.refunded >= 10120);
   });
 
   await t.test('[I-02] 추가 저장공간: 프리미엄만 구매, 용량 증가, 만료되면 동결, 기간 끝나면 회수', async () => {
@@ -286,21 +286,7 @@ test('billing: 결제·혜택·쿼터', async (t) => {
     assert.equal(monthlyLimit(db, inviter.id, 'up'), baseUp + 100 * GB);
   });
 
-  await t.test('[I-05] 추천 보상 Pro 신청·관리자 승인', async () => {
-    const u = createUser(db);
-    const c = as(u);
-    assert.equal((await c.post('/api/billing/invite/pro/apply', { channel: '' })).status, 400);
-    assert.equal((await c.post('/api/billing/invite/pro/apply', { channel: '유튜브 채널', audience: '1만 명', contact: 'me@test.local' })).status, 200);
-    assert.equal((await c.post('/api/billing/invite/pro/apply', { channel: 'a', audience: 'b', contact: 'c' })).status, 409);
-    const list = await A.get('/api/admin/billing/pro-applications');
-    const app = list.body.items.find((x) => x.userId === u.id);
-    assert.equal(app.status, 'pending');
-    await A.post(`/api/admin/billing/pro-applications/${app.id}`, { status: 'approved' });
-    const pro = (await c.get('/api/billing/invite/pro')).body;
-    assert.equal(pro.application.status, 'approved');
-    assert.ok(pro.description.ko && pro.description.en);
-    assert.equal(pro.conditionsConfirmed, false);
-  });
+  // [I-05] 추천 보상 Pro 는 test/referral-pro.test.js
 
   await t.test('[I-06] 출석 체크: KST 하루 1회, 7일 연속마다 프리미엄 1일, 확장 토큰 허용', async () => {
     const u = createUser(db);
@@ -446,7 +432,8 @@ test('billing: 결제·혜택·쿼터', async (t) => {
       assert.equal((await k.post('/api/billing/subscriptions/x/resume')).status, 403);
       assert.equal((await k.post('/api/billing/coupons/redeem', { code: 'NOPE' })).status, 403);
       assert.equal((await k.post('/api/billing/invite/bind', { code: 'NOPE' })).status, 403);
-      assert.equal((await k.post('/api/billing/invite/pro/apply', { channel: 'a', audience: 'b', contact: 'c' })).status, 403);
+      assert.equal((await k.post('/api/billing/invite/pro/upgrade', { confirm: true })).status, 403);
+      assert.equal((await k.post('/api/billing/invite/pro/withdrawals', { currency: 'KRW', payout: 'x' })).status, 403);
     }
     for (const p of ['/api/billing/orders', '/api/billing/subscriptions', '/api/billing/coupons/history', '/api/billing/invite', '/api/billing/invite/pro']) assert.equal((await cli.get(p)).status, 403, p);
     assert.equal((await cli.get('/api/billing/quota')).status, 200); // CLI 쿼터 조회는 그대로
@@ -502,6 +489,7 @@ test('billing: 결제·혜택·쿼터', async (t) => {
 
   await t.test('[I-01] 자동 갱신 주문은 구독할 때 쓴 결제 수단으로 청구', async () => {
     const u = createUser(db);
+    db.prepare("UPDATE users SET region='US' WHERE id=?").run(u.id); // PayPal 은 해외(달러) 결제 수단
     await buy(as(u), 'sub_month', 'success', 'paypal');
     await runRenewals(ctx, db.prepare('SELECT next_charge_at FROM billing_subscriptions WHERE user_id=?').get(u.id).next_charge_at + 1);
     const items = (await as(u).get('/api/billing/orders')).body.items.map((o) => `${o.method}:${o.renewal}`);
@@ -572,7 +560,7 @@ test('billing: 결제·혜택·쿼터', async (t) => {
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM billing_orders WHERE id=?').get(paid).n, 0);
     const kept = (await A.get('/api/admin/billing/orders?archived=1')).body.items.find((o) => o.id === paid);
     assert.equal(kept.status, 'paid');
-    assert.equal(kept.amount, 10125);
+    assert.equal(kept.amount, 10120);
     assert.equal(kept.user, u.email);
     assert.equal(purgeOrderArchive(db, now() + 4 * 365 * DAY), 0);
     assert.ok(purgeOrderArchive(db, now() + 5 * 365 * DAY + DAY) >= 1);
@@ -621,7 +609,7 @@ test('billing: 운영 모드 결제', async (t) => {
     const r = await c.post('/api/billing/orders', { productId: 'once_year', method: 'card' });
     assert.equal(r.status, 503);
     // 개발 모드에서 만든 테스트 주문이 남아 있어도 확정할 수 없다
-    db.prepare("INSERT INTO billing_orders (id, user_id, product_id, kind, method, amount, days, test_mode, created_at) VALUES ('ord_old', ?, 'once_year', 'once', 'card', 69354, 365, 1, ?)").run(u.id, now());
+    db.prepare("INSERT INTO billing_orders (id, user_id, product_id, kind, method, amount, days, test_mode, created_at) VALUES ('ord_old', ?, 'once_year', 'once', 'card', 69323, 365, 1, ?)").run(u.id, now());
     assert.equal((await c.post('/api/billing/orders/ord_old/confirm', { result: 'success' })).status, 503);
     assert.equal(db.prepare('SELECT premium_until FROM users WHERE id=?').get(u.id).premium_until, null);
   });
@@ -638,7 +626,7 @@ test('billing: 운영 모드 결제', async (t) => {
     assert.equal(ok.status, 200);
     assert.ok(isPremium(db.prepare('SELECT * FROM users WHERE id=?').get(u.id)));
     assert.equal(calls.at(-1).auth, 'Basic ' + Buffer.from('sk_test_mimic:').toString('base64'));
-    assert.equal(calls.at(-1).body.amount, 10125);
+    assert.equal(calls.at(-1).body.amount, 10120);
     const ref = await A.post(`/api/admin/billing/orders/${o.orderId}/refund`, { note: '청약철회' });
     assert.equal(ref.status, 200);
     assert.equal(calls.at(-1).path, '/v1/payments/pk_1/cancel');
@@ -669,7 +657,7 @@ test('billing: 운영 모드 결제', async (t) => {
     const ok = await cv.post(`/api/billing/orders/${o.orderId}/confirm`, { authKey: 'a1', customerKey: o.customerKey });
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
     assert.equal(calls.at(-2).path, '/v1/billing/authorizations/issue');
-    assert.deepEqual([calls.at(-1).path, calls.at(-1).body.amount], ['/v1/billing/bk_a1', 6256]);
+    assert.deepEqual([calls.at(-1).path, calls.at(-1).body.amount], ['/v1/billing/bk_a1', 6254]);
     const order = db.prepare('SELECT * FROM billing_orders WHERE id=?').get(o.orderId);
     assert.equal(order.pg_key, `pay_${o.orderId}`); // 환불 때 토스 취소에 쓴다
     let sub = db.prepare('SELECT * FROM billing_subscriptions WHERE user_id=?').get(v.id);
@@ -678,7 +666,7 @@ test('billing: 운영 모드 결제', async (t) => {
     // 갱신: 빌링키로 정가 청구
     await runRenewals(s.ctx, sub.next_charge_at + 1000);
     const renewal = db.prepare("SELECT * FROM billing_orders WHERE user_id=? AND renewal=1 AND status='paid'").get(v.id);
-    assert.deepEqual([renewal.amount, renewal.method, renewal.pg_key], [9591, 'card', `pay_${renewal.id}`]);
+    assert.deepEqual([renewal.amount, renewal.method, renewal.pg_key], [9587, 'card', `pay_${renewal.id}`]);
     assert.equal(calls.at(-1).path, '/v1/billing/bk_a1');
     // 갱신 결제 실패: 하루 뒤 재시도, 3번 실패하면 자동 갱신을 멈춘다
     declineBilling = true;

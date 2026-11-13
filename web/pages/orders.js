@@ -1,7 +1,7 @@
 // 구독 관리 · 구매 기록 · 쿠폰 사용 내역 · 출석 체크(/drive/orders). I-01, I-03, I-06
-import { api, h, t, toast, toastError, confirmDialog, promptDialog, formatWon, formatDate, loadCss, icon, callComponent, bus } from '/ui.js';
+import { api, h, t, toast, toastError, confirmDialog, promptDialog, formatDate, loadCss, icon, callComponent, bus } from '/ui.js';
 import { refreshShell } from '/layout.js';
-import { METHODS } from '/pages/payment.js';
+import { METHODS, formatMoney } from '/pages/payment.js';
 
 const TABS = [
   ['subs', '구독 관리', 'Subscriptions'],
@@ -66,7 +66,7 @@ async function subsTab(box, redraw) {
           {},
           h('tr', {}, h('th', {}, t('시작일', 'Started')), h('td', {}, formatDate(s.createdAt, false))),
           h('tr', {}, h('th', {}, t('현재 기간 끝', 'Current period ends')), h('td', {}, formatDate(s.currentPeriodEnd, false))),
-          s.status === 'active' ? h('tr', {}, h('th', {}, t('다음 결제', 'Next charge')), h('td', {}, s.autoRenew ? `${formatDate(s.nextChargeAt, false)} · ${formatWon(s.renewPrice)}/${per}` : autoRenewAvailable ? t('없음(자동 갱신 꺼짐)', 'None (auto-renew off)') : t('없음(기간이 끝나면 다시 구독해 주세요)', 'None (subscribe again when it ends)'))) : null,
+          s.status === 'active' ? h('tr', {}, h('th', {}, t('다음 결제', 'Next charge')), h('td', {}, s.autoRenew ? `${formatDate(s.nextChargeAt, false)} · ${formatMoney(s.renewPrice, s.currency)}/${per}` : autoRenewAvailable ? t('없음(자동 갱신 꺼짐)', 'None (auto-renew off)') : t('없음(기간이 끝나면 다시 구독해 주세요)', 'None (subscribe again when it ends)'))) : null,
         ),
       ),
     );
@@ -101,7 +101,7 @@ async function ordersTab(box, redraw) {
       h('td', {}, formatDate(o.paidAt || o.createdAt)),
       h('td', {}, t(o.label, o.labelEn), ' ', o.renewal ? h('span', { class: 'badge' }, t('자동 갱신', 'Renewal')) : null, o.firstDiscount ? h('span', { class: 'badge accent' }, t('첫 결제 할인', 'First-time')) : null),
       h('td', {}, t(...(METHODS[o.method] || [o.method, o.method])), o.testMode ? h('span', { class: 'small muted' }, t(' (테스트)', ' (test)')) : null),
-      h('td', {}, formatWon(o.amount)),
+      h('td', {}, formatMoney(o.amount, o.currency)),
       h('td', {}, badge(ORDER_STATUS[o.status] || [o.status, o.status])),
       h('td', {}, action),
     );

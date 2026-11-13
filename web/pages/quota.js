@@ -1,6 +1,6 @@
 // 전송 쿼터 상세(/drive/quota). F-01 월 기본 쿼터, F-02 무료 일일 한도, F-03 추가 쿼터, F-04 상세, F-05 연결 앱 상한
 import { api, h, t, toastError, formatBytes, formatDate, loadCss, icon } from '/ui.js';
-import { buyProduct, productLabel } from '/pages/payment.js';
+import { buyProduct, productLabel, formatMoney } from '/pages/payment.js';
 
 const KINDS = [
   ['cloud', '클라우드 다운로드', 'Cloud download', '외부 링크를 미믹 서버가 받아 저장한 양', 'Data Mimic fetched into your cloud'],
@@ -100,7 +100,7 @@ export async function render(root, ctx) {
               { class: 'bl-addon' },
               h('b', {}, productLabel(x)),
               h('p', {}, t(`클라우드 ${formatBytes(x.amounts.cloud)} · 다운스트림 ${formatBytes(x.amounts.down)} · 업로드 ${formatBytes(x.amounts.up)} · ${x.months === 12 ? '12개월 동안 매달 지급' : '구매한 달에만 사용'}`, `Cloud ${formatBytes(x.amounts.cloud)} · down ${formatBytes(x.amounts.down)} · up ${formatBytes(x.amounts.up)} · ${x.months === 12 ? 'every month for 12 months' : 'this month only'}`)),
-              h('div', { class: 'row' }, h('b', {}, `₩${x.payNow.toLocaleString('ko-KR')}`), h('div', { class: 'spacer' }), b),
+              h('div', { class: 'row' }, h('b', {}, formatMoney(x.payNow, p.currency)), h('div', { class: 'spacer' }), b),
             );
           }),
       ),

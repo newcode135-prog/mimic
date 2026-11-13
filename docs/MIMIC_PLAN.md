@@ -514,6 +514,11 @@ npm ci
 #   MIMIC_VAPID_PUBLIC_KEY / MIMIC_VAPID_PRIVATE_KEY / MIMIC_VAPID_SUBJECT  ← 웹 푸시(K-05). 없으면 <MIMIC_DATA>/vapid.json 을
 #                                         자동 생성 — 데이터와 함께 백업할 것(키가 바뀌면 기존 푸시 구독이 모두 끊김)
 #   MIMIC_ANDROID_PACKAGE / MIMIC_ANDROID_SHA256  ← 안드로이드 앱(TWA) 연결 /.well-known/assetlinks.json (지문은 쉼표로 여러 개)
+#   TOSS_CLIENT_KEY_USD / TOSS_SECRET_KEY_USD  ← 해외(달러) 결제용 토스 MID(Q-4). 웹훅 https://<도메인>/api/billing/toss/webhook 을 원화·달러 MID 모두에 등록
+#   MIMIC_FX_USD_KRW=1450                 ← 환율을 못 받아올 때 쓰는 기본값(매일 자동 갱신, Q-3)
+#   MIMIC_DISK_ALERT_PCT=80 / MIMIC_DISK_RESUME_PCT=75  ← 디스크 경보·가입 일시 중지(Q-5)
+#   MIMIC_SEED_UPLOAD_KBPS=0 / MIMIC_SEED_MAX=200       ← 시딩 업로드 속도·동시 시딩 수(Q-6)
+#   MIMIC_HOST=127.0.0.1                  ← 운영 기본값(같은 맥의 Caddy 만 접속)
 #   GOOGLE_CLIENT_ID·SECRET / FACEBOOK_CLIENT_ID·SECRET / APPLE_* / TOSS_CLIENT_KEY·TOSS_SECRET_KEY / TELEGRAM_BOT_TOKEN
 node --env-file=.env server/seed.js <관리자 이메일>   # 첫 관리자 계정(운영 .env 의 DB 에 만들려면 --env-file 필수)
 npm start   # 기본 포트 4300
@@ -580,9 +585,10 @@ npm start   # 기본 포트 4300
 
 - 기획보고서 완성(Claude Docs, 비공개). 이 문서가 그 내용을 모두 포함하고 대체함
 - PikPak 조사 완료: 공개 페이지·FAQ·도움말·결제·로그인 화면, 무료 계정 웹 드라이브(QR 로그인), 플랫폼별 소개 페이지
-- **구현 완료(GitHub main)**: 코어 + 기능 모듈 9개(auth·drive·offline·media·share·vault·billing·integrations·admin-content) + 플랫폼(PWA·데스크톱·확장·CLI·텔레그램 봇). 기능 76개 중 **70개 완료, 6개 부분**(아래). 자동 테스트 275개 모두 통과. 독립 검수 2회(1차 126건·2차 70건 지적 → 수정)
+- **구현 완료(GitHub main)**: 코어 + 기능 모듈 9개(auth·drive·offline·media·share·vault·billing·integrations·admin-content) + 플랫폼(PWA·데스크톱·확장·CLI·텔레그램 봇). 기능 76개 중 **72개 완료, 4개 부분**(아래). 자동 테스트 모두 통과. 독립 검수 2회(1차 126건·2차 70건 지적 → 수정)
 - **브라우저 실사용 점검(2026-11-13)**: 이메일 가입(인증코드) → My Pack 생성 → 업로드 → 영상 재생(자막 자동 연결) → 클라우드 다운로드(링크 → 내 드라이브, 남은 횟수 차감) → 공유 링크 열기 → 테스트 결제(프리미엄 즉시 적용·10TB) → 관리자 화면 8개 메뉴. 모두 정상
-- **부분 완료 6개**: A-04(yt-dlp 설치 필요), B-09(SD 카드는 안드로이드 앱 전용), C-02(HDR 은 기기 지원에 따름), I-05(추천 보상 Pro 조건 미확인), K-05(웹 푸시는 실제 발송, 휴대폰 앱 푸시는 앱 출시 후), K-09(설치 파일 빌드·서명 전).
+- **부분 완료 4개**: B-09(SD 카드는 안드로이드 앱 전용), C-02(HDR 은 기기 지원에 따름), K-05(웹 푸시는 실제 발송, 휴대폰 앱 푸시는 앱 출시 후), K-09(윈도우·맥 설치 파일은 GitHub Actions 로 자동 빌드 — 코드 서명 인증서 전, 안드로이드·TV 앱은 도메인 확정 후).
+- **3차(2026-11-13 오후, 회사 결정 반영)**: 맥미니 한 줄 설치 키트(deploy/macmini), 윈도우·맥 설치 파일 자동 빌드, PikPak 과 같은 가격 + 해외 달러 결제(매일 환율), 토스 해외 카드·PayPal·Alipay·웹훅, 추천 보상 Pro 현금 보상·출금(I-05), 디스크 경보·가입 일시 중지, 계속 시딩(하드링크), 금고 영구 보관, 자동 결제 키 암호화 저장
 - **2차 마무리(2026-11-13 오후)**: 영어 본문 전체(도움말·FAQ·블로그·약관), 알림·메일 영어, 웹 푸시 실제 발송(VAPID·RFC 8291 암호화), 관리자 화면(추천 보상 메뉴·초대 보상 검토·보관 주문·연락처 무효·삭제 보류), 앱 설치 버튼·CLI 설치 명령, 안드로이드 앱 연결 파일, 외부 플레이어 개선, 차단된 공유 표시, 접속 국가로 다운로드 지역 확인 사유는 `docs/features.json` 의 `note`
 - **운영 전 외부 준비물**: PG 계약·토스 키, 소셜 로그인 키, 문자·메일 발송 업체, 웹하드 등록 등 법무 검토, 맥미니·도메인·HTTPS, 저장 용량 결정(Q-5)
 - 다음 작업: 위 외부 준비물 → 맥미니 배포(11장) → 클로즈드 베타
