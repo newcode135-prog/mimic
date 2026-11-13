@@ -44,6 +44,8 @@ export function loadConfig(overrides = {}) {
     adminEmail: env.MIMIC_ADMIN_EMAIL,
     // 신뢰하는 프록시가 붙이는 IP 국가 헤더 이름(예: cf-ipcountry). 없으면 휴대폰 없는 가입의 지역은 기기 언어로만 정한다(K-04)
     countryHeader: env.MIMIC_COUNTRY_HEADER?.trim().toLowerCase() || undefined,
+    // 비공개 미리보기·베타: 설정하면 사이트 전체가 접속 비밀번호(HTTP Basic)를 물어본다
+    sitePassword: env.MIMIC_SITE_PASSWORD || undefined,
     // 운영 모드 발송 대행사(H-01): JSON POST { from, to, subject, text } + Authorization: Bearer <KEY>
     mail: { api: env.MIMIC_EMAIL_API, key: env.MIMIC_EMAIL_API_KEY, from: env.MIMIC_EMAIL_FROM },
     sms: { api: env.MIMIC_SMS_API, key: env.MIMIC_SMS_API_KEY, from: env.MIMIC_SMS_FROM },

@@ -1,6 +1,7 @@
 // 미믹 서버 진입점. server/modules/<이름>/index.js 를 자동으로 불러와 등록한다.
 // 모듈 규약(docs/BUILD_SPEC.md): export const migrations(SQL), export function register(app, ctx), export const jobs([{ name, everyMs, run(ctx) }])
 import express from 'express';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -30,6 +31,16 @@ export async function createApp(overrides = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 'loopback');
+  // 비공개 미리보기·베타(MIMIC_SITE_PASSWORD): 비밀번호를 아는 사람만 사이트 전체에 들어온다. 아이디는 아무거나
+  if (cfg.sitePassword) {
+    const want = crypto.createHash('sha256').update(cfg.sitePassword).digest();
+    app.use((req, res, next) => {
+      const m = /^Basic (.+)$/i.exec(req.get('authorization') || '');
+      const pw = m ? Buffer.from(m[1], 'base64').toString().replace(/^[^:]*:/, '') : '';
+      if (crypto.timingSafeEqual(crypto.createHash('sha256').update(pw).digest(), want)) return next();
+      res.set('WWW-Authenticate', 'Basic realm="Mimic preview", charset="UTF-8"').status(401).type('text/plain; charset=utf-8').send('미믹 미리보기 접속 비밀번호가 필요합니다 / Password required');
+    });
+  }
   // WebDAV 는 요청 본문이 파일 그 자체라 JSON 해석을 건너뛴다(Express 경로는 대소문자 구분 없음 → /WEBDAV 도 같게, G-01)
   const jsonBody = express.json({ limit: '2mb' });
   app.use((req, res, next) => (/^\/webdav(\/|$)/i.test(req.path) ? next() : jsonBody(req, res, next)));

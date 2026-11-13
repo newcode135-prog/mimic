@@ -128,6 +128,8 @@ $admin_line
 # MIMIC_SEED_MAX=200
 # 서버가 받는 주소(기본 127.0.0.1 — 같은 맥의 Caddy 만 접속). 다른 구성일 때만 0.0.0.0
 # MIMIC_HOST=127.0.0.1
+# 비공개 베타: 설정하면 사이트 전체에 접속 비밀번호를 물어봄(출시할 때는 지움)
+# MIMIC_SITE_PASSWORD=
 EOF
 }
 
