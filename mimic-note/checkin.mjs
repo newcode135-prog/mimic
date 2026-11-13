@@ -3,27 +3,22 @@
 // 그 팀원의 남은 미션을 꺼내 Claude Code 가 전달한다.
 // Node 18 이상, npm install 필요 없음.
 //
-//   node mimic-note/checkin.mjs 민호              남은 미션 출력 (Claude Code 가 그대로 전달)
-//   node mimic-note/checkin.mjs 민호 --telegram   + 텔레그램으로도 발송(봇 설정이 끝난 뒤)
-//   node mimic-note/checkin.mjs --chat-ids        봇에 말을 건 사람들의 chat id 확인(TELEGRAM_BOT_TOKEN 필요)
+//   node mimic-note/checkin.mjs 민호                 남은 미션 출력(Claude Code 가 그대로 전달) + 텔레그램 발송 요청·결과 확인
+//   node mimic-note/checkin.mjs 민호 --no-telegram   화면 출력만
+//   node mimic-note/checkin.mjs 민호 --no-wait       텔레그램 발송만 요청하고 결과는 기다리지 않음
 //
-// 텔레그램 발송 순서(--telegram 일 때)
-//   1) 이 컴퓨터에 TELEGRAM_BOT_TOKEN 과 그 팀원의 chat id 가 있으면 바로 보낸다.
-//      chat id: TELEGRAM_CHAT_IDS='{"minho":"123"}' 또는 TELEGRAM_CHAT_ID_MINHO=123 (저장소 루트 .env 도 읽음)
-//   2) 없으면 gh CLI 로 GitHub Actions(미믹노트 체크인)를 실행한다. 토큰은 저장소 비밀값에 있다.
+// 텔레그램은 항상 GitHub Actions(mimic-checkin.yml)가 보낸다: 토큰이 팀원 컴퓨터에 없어도 되고,
+// 같은 내용을 이미 보냈으면 다시 보내지 않는다(중복 방지). 이 컴퓨터의 gh 계정에 저장소 쓰기 권한이 있어야 요청할 수 있다.
+// 연결: node mimic-note/telegram.mjs connect (저장소 주인이 한 번)
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { NOTE_DIR, loadMembers, findMember, loadDb, openMissions, doneMissions, formatMissions, othersLowMissions, loadPremise, readEnv, chatIdFor, telegramApi } from './lib.mjs';
+import { NOTE_DIR, loadMembers, findMember, loadDb, openMissions, doneMissions, formatMissions, othersLowMissions, loadPremise, chatIdFor } from './lib.mjs';
 import { loadGames, latestGame, formatGame } from './game.mjs';
 import { HOME_DIR } from './passive/compress.mjs';
+import { createGithub, waitForNotify, formatNotify, DB_FILE } from './github.mjs';
 
 export { loadMembers, findMember } from './lib.mjs';
-
-const ROOT = path.resolve(NOTE_DIR, '..');
-const REPO = 'newcode135-prog/mimic';
-const WORKFLOW = 'mimic-checkin.yml';
 
 export function buildMessage(member, db = loadDb()) {
   return formatMissions(member, openMissions(db, member.id));
@@ -66,59 +61,35 @@ export function loadAuto(dir = NOTE_DIR) {
   try { return JSON.parse(fs.readFileSync(path.join(dir, 'data', 'auto', 'todos.json'), 'utf8')); } catch { return null; }
 }
 
-const readDotEnv = () => readEnv(ROOT, {});
-const telegram = telegramApi;
 export { chatIdFor };
 
-function dispatchViaActions(memberId) {
+// GitHub Actions 에 이 팀원 발송을 요청하고(같은 내용이면 Actions 가 건너뜀) 실제 결과를 돌려준다.
+export async function telegramViaActions(member, { github = createGithub(), wait = true, sleep } = {}) {
+  let login;
   try {
-    execFileSync('gh', ['workflow', 'run', WORKFLOW, '-R', REPO, '-f', `member=${memberId}`], { stdio: 'pipe' });
-    return { ok: true };
+    login = github.whoami();
+    if (!github.access().push) return `📨 텔레그램: 건너뜀 — GitHub 계정 ${login} 에 저장소 쓰기 권한이 없어 발송을 요청할 수 없습니다(초대 수락 필요).`;
+    let r;
+    for (let i = 0; i < 2; i++) { // 다른 실행과 겹쳐 취소되면 한 번 더 요청
+      const after = github.latestRunId();
+      github.dispatch(member.id, false);
+      if (!wait) return '📨 텔레그램: GitHub Actions 에 발송을 요청했습니다(결과 미확인 — --no-wait).';
+      r = await waitForNotify(github, { afterRunId: after, actor: login, sleep });
+      if (r.status !== 'cancelled') break;
+    }
+    return formatNotify(r, loadMembers());
   } catch (e) {
-    const msg = String(e.stderr || e.message || e).trim().split('\n')[0];
-    return { ok: false, reason: e.code === 'ENOENT' ? 'gh CLI 가 설치되어 있지 않음' : msg };
+    return `📨 텔레그램: 요청하지 못했습니다 — ${e.message}`;
   }
-}
-
-async function sendTelegram(member, message, env, flags) {
-  const token = env.TELEGRAM_BOT_TOKEN;
-  const chatId = chatIdFor(member.id, env);
-  if (token && chatId) {
-    await telegram(token, 'sendMessage', { chat_id: chatId, text: message });
-    console.log(`텔레그램: ${member.name}님에게 보냈습니다.`);
-    return 0;
-  }
-  if (flags.has('--no-dispatch')) {
-    console.error(`텔레그램: 보낼 수 없음 — ${!token ? 'TELEGRAM_BOT_TOKEN' : `${member.id} 의 chat id(TELEGRAM_CHAT_IDS)`} 가 없습니다.`);
-    return 1;
-  }
-  const r = dispatchViaActions(member.id);
-  if (r.ok) {
-    console.log(`텔레그램: GitHub Actions(${WORKFLOW})에 발송을 요청했습니다. 보통 30초~1분 안에 도착합니다.`);
-    return 0;
-  }
-  console.log(`텔레그램: 아직 보내지 못했습니다(이 컴퓨터에 토큰 없음, Actions 요청 실패: ${r.reason}). mimic-note/README.md 의 "텔레그램 설정" 참고.`);
-  return 0;
 }
 
 async function main(argv) {
   const args = argv.filter((a) => !a.startsWith('--'));
   const flags = new Set(argv.filter((a) => a.startsWith('--')));
-  const env = { ...readDotEnv(), ...process.env };
-
   if (flags.has('--chat-ids')) {
-    if (!env.TELEGRAM_BOT_TOKEN) { console.error('TELEGRAM_BOT_TOKEN 이 필요합니다(저장소 폴더의 .env 에 넣거나 환경변수로).'); return 1; }
-    const updates = await telegram(env.TELEGRAM_BOT_TOKEN, 'getUpdates');
-    const seen = new Map();
-    for (const u of updates) {
-      const c = (u.message || u.my_chat_member || {}).chat;
-      if (c) seen.set(c.id, [c.first_name, c.last_name, c.username && `@${c.username}`].filter(Boolean).join(' '));
-    }
-    if (!seen.size) console.log('아직 봇에 말을 건 사람이 없습니다. 봇을 열고 /start 를 누르세요.');
-    for (const [id, who] of seen) console.log(`${id}\t${who}`);
+    console.log('chat id 를 직접 확인·전달하는 방식은 바뀌었습니다. 저장소 주인 계정으로 본인 터미널에서:\n  node mimic-note/telegram.mjs connect\n→ 팀원마다 일회용 연결 링크가 나오고, 링크로 [시작]하면 본인 확인 후 chat id 가 .env 와 GitHub 비밀값에 자동 등록됩니다(대화·저장소에 붙여 넣지 않음).');
     return 0;
   }
-
   const members = loadMembers();
   const member = findMember(args[0], members);
   if (!member) {
@@ -131,12 +102,23 @@ async function main(argv) {
     fs.writeFileSync(path.join(HOME_DIR(), 'session.json'), JSON.stringify({ player: member.id, at: new Date().toISOString() }));
   } catch { /* 접속 기록을 못 남겨도 체크인은 계속 */ }
 
-  const db = loadDb();
+  // 미션은 GitHub main 의 최신본으로(텔레그램도 main 기준), 못 읽으면 이 폴더의 파일
+  const github = createGithub();
+  let db;
+  let note = '';
+  try {
+    db = JSON.parse(github.readFile(DB_FILE).text);
+  } catch {
+    db = loadDb();
+    note = '(GitHub main 을 읽지 못해 이 폴더의 미션을 보여 줍니다 — 최신이 아닐 수 있으니 git pull)';
+  }
   console.log(checkinText(member, db));
+  if (note) console.log(`\n${note}`);
 
-  if (!flags.has('--telegram')) return 0;
+  if (flags.has('--no-telegram')) return 0;
   console.log('');
-  return sendTelegram(member, buildMessage(member, db), env, flags);
+  console.log(await telegramViaActions(member, { github, wait: !flags.has('--no-wait') }));
+  return 0;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

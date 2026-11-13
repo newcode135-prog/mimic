@@ -40,9 +40,11 @@ Claude Code 가 전달하는 문구(예):
 Claude Code 를 거치지 않고 직접 실행해도 됩니다.
 
 ```bash
-node mimic-note/checkin.mjs 민호              # 남은 미션 보기
-node mimic-note/checkin.mjs 민호 --telegram   # + 텔레그램 발송(봇 설정이 끝난 뒤)
+node mimic-note/checkin.mjs 민호                 # 남은 미션 보기 + 텔레그램 발송 요청·실제 결과 확인
+node mimic-note/checkin.mjs 민호 --no-telegram   # 화면만
 ```
+
+체크인의 텔레그램은 GitHub Actions 가 보냅니다. 같은 내용을 이미 보냈으면 다시 보내지 않습니다(중복 방지).
 
 ## 2. 미션 데이터베이스
 
@@ -54,41 +56,108 @@ node mimic-note/checkin.mjs 민호 --telegram   # + 텔레그램 발송(봇 설�
 | `assignee` | 담당 팀원 아이디 |
 | `order` | 담당자 안에서의 순서 |
 | `title` · `detail` | 미션 제목 · 설명 |
-| `status` | `todo` · `done` |
-| `createdBy` · `createdAt` · `doneAt` | 누가·언제 만들었고 언제 끝냈는지 |
+| `status` | `todo`(진행) · `done`(완료) · `replaced`(미션설정으로 교체되어 보관 — 지우지 않음) |
+| `priority` | `low` 면 후순위(맨 뒤) |
+| `createdBy` · `createdAt` · `doneAt` · `doneBy` · `replacedAt` · `replacedBy` | 누가·언제 만들고 끝내고 교체했는지 |
+
+### 대표·관리자가 Claude Code 에 입력하는 말 (Claude Code 가 아래 명령으로 바꿔 실행)
+
+| 입력 | 하는 일 |
+| --- | --- |
+| `민호 미션설정`<br>`1. 업무 A`<br>`2. 업무 B` | 민호님의 남은 미션을 이 목록으로 교체. 제목이 같은 기존 미션은 ID 유지, 빠진 미션은 `replaced` 로 보관, 완료 기록은 그대로. 같은 목록을 다시 넣으면 변경 없음 |
+| `민호 미션추가`<br>`4. 업무 D` | 기존 미션 유지 + 뒤에 추가(이미 있는 제목은 건너뜀). `최우선`이면 맨 앞 |
+| `민호 미션완료 2` | 지금의 2번(고유 ID 확인 후) 완료. 남은 번호는 당겨지고 ID 는 그대로 |
+| `민호 https://github.com/newcode135-prog/mimic` | 체크인(위 1장) |
+| `미믹 전체미션` | 5명의 남은·완료 수, 진행률, 상위 3개 |
 
 ```bash
-node mimic-note/mission.mjs list                                   # 전체 남은 미션
-node mimic-note/mission.mjs list 민호                              # 민호님 미션
-node mimic-note/mission.mjs add 민호 "제목" "설명" --by 창민        # 미션 추가(관리자만)
-node mimic-note/mission.mjs done 민호 1                            # 민호님 미션 1번 완료(M-0001 도 가능)
+node mimic-note/mission.mjs set 민호 <<'EOF'      # 미션설정
+1. 로그인 UI 개발
+2. 파일 다운로드 API 테스트
+EOF
+node mimic-note/mission.mjs add 민호 <<'EOF'      # 미션추가 (--top: 맨 앞)
+4. API 성능 최적화
+EOF
+node mimic-note/mission.mjs add 민호 "제목" "설명"   # 한 개만 추가
+node mimic-note/mission.mjs done 민호 2             # 완료(여러 개: done 민호 2 3, ID: done 민호 M-0002)
+node mimic-note/mission.mjs low 민호 1              # 후순위
+node mimic-note/mission.mjs list [민호] · all       # 보기(이 폴더 기준 — 먼저 git pull)
 ```
 
-- 미션은 **관리자(창민·민호·유리)만** 만들 수 있고, 완료는 **본인 미션만** 할 수 있습니다.
-- 바꾼 뒤 **git commit·push** 해야 중앙(미믹노트)에 반영되어 다른 팀원과 Claude Code 가 봅니다.
-- 다음 단계: 여러 명이 동시에 고칠 때의 충돌 처리, 오래된 완료 미션 압축·소거.
-
-### 텔레그램이 보내지는 경로 (`--telegram` 일 때)
+바꾸는 명령은 이렇게 동작합니다.
 
 ```
-[팀원 컴퓨터의 Claude Code]
-   └─ node mimic-note/checkin.mjs 민호
-        ├─ ① 이 컴퓨터에 봇 토큰 + chat id 가 있음 → 바로 발송
-        └─ ② 없음 → gh 로 GitHub Actions "미믹노트 체크인" 실행
-                       └─ 저장소 비밀값의 토큰으로 발송 (토큰이 팀원 컴퓨터에 갈 필요 없음)
+mission.mjs set/add/done/low
+  ① 이 컴퓨터의 gh 로그인 계정 확인 → 저장소 쓰기 권한 + members.json 의 github 로 본인·역할 확인
+  ② GitHub main 의 최신 missions.json 을 읽어 적용 → 검사(validateDb) → 파일 sha 를 붙여 저장(커밋)
+     그사이 누가 바꿨으면 GitHub 가 거절 → 최신본에 다시 적용(최대 3번). 강제로 덮어쓰지 않음
+  ③ 그 커밋으로 GitHub Actions "미믹노트 알림"이 돌고, 끝나면 팀원별 실제 발송 결과를 화면에 출력
 ```
 
-②를 쓰려면 팀원이 이 저장소의 **쓰기 권한(Collaborator)** 을 갖고 그 컴퓨터에서 `gh auth login` 을 마쳐야 합니다.
+- 미션 만들기·정하기·후순위는 **관리자(창민·민호·유리)만**, 완료는 **본인 미션 또는 관리자**만 할 수 있습니다.
+- 권한은 `--by 이름` 이 아니라 **GitHub 인증 계정**으로 확인합니다. 명부에 GitHub 아이디가 없는 팀원(네이뜬·루카스)은 아이디를 등록해야 명령을 쓸 수 있습니다.
+- 로컬 확인은 1차 방어일 뿐이라, GitHub Actions 가 push 마다 **push 한 계정의 권한을 다시 확인**합니다(아래). 직접 JSON 을 고쳐 push 해도 권한 없는 변경은 알림이 나가지 않고 실행이 실패로 표시되며 대표관리자에게 경고가 갑니다. 그 뒤 알림은 **관리자 이상이 다시 저장(또는 되돌리기)할 때까지 보류**됩니다 — 관리자의 다음 저장이 그 상태를 승인한 것으로 봅니다.
+- ⚠️ **한계(정직하게)**: 저장소 쓰기 권한이 있는 사람은 확인 코드(`notify.mjs`)나 워크플로 자체를 고쳐 push 할 수 있고, 저장소 비밀값(봇 토큰·chat id)도 자기 워크플로로 꺼낼 수 있습니다. 그래서 이 확인은 **실수·직접 수정을 잡는 감지 장치**이고, 완전한 차단은 GitHub 쪽에서만 됩니다 — 쓰기 권한은 믿는 사람에게만 주거나, 개인 저장소 대신 조직 저장소 + 보호 규칙(CODEOWNERS 승인)을 쓰세요.
 
-### 텔레그램 설정 (대표관리자가 한 번)
+### 텔레그램 자동 발송 (GitHub Actions `.github/workflows/mimic-checkin.yml` → `notify.mjs`)
 
-1. 텔레그램 **@BotFather** → `/newbot` → 봇 토큰 받기
-2. 민호님이 그 봇을 열고 **/start** 누르기 (봇은 먼저 말을 건 사람에게만 보낼 수 있음)
-3. chat id 확인: `TELEGRAM_BOT_TOKEN=<토큰> node mimic-note/checkin.mjs --chat-ids`
-4. GitHub → Settings → Secrets and variables → Actions 에 등록
-   - `TELEGRAM_BOT_TOKEN` = 봇 토큰
-   - `TELEGRAM_CHAT_IDS` = `{"minho":"<민호 chat id>"}` (팀원이 늘면 여기에 추가)
-5. 시험: `gh workflow run mimic-checkin.yml -R newcode135-prog/mimic -f member=minho`
+```
+main 에 missions.json·members.json 변경 반영 (push)          10분마다 정기 검사 (schedule)        체크인·재전송 (workflow_dispatch)
+        └──────────────────────────────┬──────────────────────────────┘
+  ① 장부의 "마지막으로 확인된 커밋" → 지금 main 까지를 push 단위로 나눔
+     (누가 push 했는지 = 저장소 활동 기록 — [skip ci] push·force push·PR 병합도 남음)
+  ② push 마다 그 push 를 한 GitHub 계정의 권한을 "확인된 상태의 명부"로 확인
+       관리자: 추가·수정·후순위 / 팀원: 본인 미션 완료만 / 삭제·명부 변경: 대표관리자 / 저장소 주인 계정: 모두
+     권한 없는 변경·깨진 데이터는 확인된 상태로 올리지 않음 → 발송 안 함 + 실행 실패 + 대표관리자 경고
+     main 기록이 다시 쓰이면(force push) 저장소 주인이 실행할 때까지 아무것도 보내지 않음
+  ③ 확인된 변경 중 텔레그램 메시지가 실제로 달라진 팀원만 고름 (안 바뀐 사람에게는 안 보냄)
+  ④ 그 팀원의 "확인된 최신 상태"를 그 사람 chat id 로만 sendMessage → 응답(ok·message_id·chat.id)까지 확인 → 결과를 로그·요약에 기록
+  ⑤ 장부(Actions 캐시)에 사람별 마지막 발송 내용의 해시 → 같은 내용 재발송 방지
+     미연결·토큰 없음·실패는 '보류' → 다음 실행(정기 검사 포함)에서 재시도
+```
+
+- 텔레그램 오류: 429(요청 제한)는 `retry_after` 만큼 기다려 재시도, 5xx·네트워크 오류는 재시도, 403(차단) 등은 실패로 기록. 한 사람의 실패가 다른 사람의 발송을 막지 않습니다.
+- 동시 실행은 한 줄로 세우고(concurrency), 중간 실행이 합쳐져 취소돼도 다음 실행이 그 구간을 push 한 사람별로 확인합니다.
+- 정기 검사는 바뀐 것·보류된 것이 없으면 아무것도 보내지 않습니다. GitHub 의 예약 실행은 **정확히 10분 간격이 보장되지 않습니다**(늦어지거나 건너뛸 수 있음). 공개 저장소는 60일간 활동이 없으면 예약 실행이 꺼집니다. 끄기: 저장소 변수 `MIMIC_NOTE_SCHEDULE=off`. **비공개로 바꾸면** Actions 무료 시간(월 2,000분)을 정기 검사가 대부분 쓰므로 끄거나 간격을 늘리세요.
+- `pull_request` 로는 실행하지 않습니다(외부 PR 코드에 비밀값이 닿지 않음). 권한은 `contents: read`, `actions: read` 뿐입니다.
+- 수동 재전송: `node mimic-note/telegram.mjs resend 민호` (같은 내용이어도 다시 보냄)
+- 장부(확인된 기준 커밋·발송 기록)는 Actions 캐시에 있어 7일간 한 번도 읽히지 않으면 지워집니다(정기 검사가 켜져 있으면 계속 읽힘). 장부가 없으면 **안전하게 멈추고**(확인 안 된 상태를 보내지 않음), 저장소 주인 계정이 한 번 실행하면 다시 시작합니다: `gh workflow run mimic-checkin.yml -R newcode135-prog/mimic` 또는 그 계정으로 미션 명령 1번. 이때 발송 기록도 없어져 같은 내용이 한 번 더 갈 수 있습니다. 처음 배포(저장소 주인이 PR 병합)도 같은 방식으로 시작됩니다.
+
+메시지 모양(데이터에서 계산 — 상위 3개 + 설명은 눌러서 펼치기, 4번부터는 "추가 미션"에 접힘):
+
+```
+🎯 MIMIC NOTE
+
+👤 민호님의 미션
+
+1️⃣ 로그인 UI 개발
+
+2️⃣ 파일 다운로드 API 테스트
+
+3️⃣ 모바일 화면 검수
+
+━━━━━━━━━━
+
+📊 진행률 0/3
+📌 남은 미션 3개
+```
+
+### 텔레그램 연결 (저장소 주인이 한 번, 팀원은 링크만 누름)
+
+1. 텔레그램 **@BotFather** → `/newbot` → 봇 토큰 받기 (미믹 클라우드 서비스 봇과 **다른** 봇)
+2. 저장소 주인 계정(`newcode135-prog`)으로 gh 로그인된 컴퓨터의 **본인 터미널**에서:
+   ```bash
+   node mimic-note/telegram.mjs connect
+   ```
+   - 토큰을 화면에 안 보이게 입력 → `getMe` 로 진짜 봇인지 확인 → `.env`(git 제외)와 GitHub 비밀값 `TELEGRAM_BOT_TOKEN` 에 등록
+   - 아직 연결 안 된 팀원마다 **일회용 연결 링크**(24시간)가 나옵니다 → 각자에게 **본인 링크만** 개인 메시지로 전달
+3. 팀원이 링크를 열고 **[시작]** → 봇에 `/start <코드>` 가 가고, 코드가 맞을 때만 그 텔레그램 계정을 그 팀원에게 연결합니다.
+   코드 없는 `/start`, 이미 쓴 코드, 만료 코드, 단체방, 이미 다른 팀원으로 연결된 계정은 거절합니다.
+4. 연결되면 chat id 가 GitHub 비밀값 `TELEGRAM_CHAT_ID_<아이디>` 에 팀원별로 따로 등록됩니다(서로 덮어쓰지 않음). 터미널에 그 사람의 텔레그램 이름이 나오니 본인이 맞는지 확인하세요.
+5. 상태: `node mimic-note/telegram.mjs status` · 다시 연결: `connect --relink 민호`
+6. 연결은 **한 컴퓨터에서만** 하세요. "이미 다른 팀원으로 연결된 계정" 확인은 그 컴퓨터의 `.env` 기준이라(GitHub 비밀값은 읽을 수 없음), 다른 컴퓨터에서 하면 이 확인이 빠집니다. 맥미니의 패시브 스킬이 텔레그램을 쓰려면 맥미니에서 같은 명령으로 연결하세요.
+
+권한이 없어 비밀값 등록이 실패하면 GitHub → Settings → Secrets and variables → Actions 에서 같은 이름으로 직접 등록하면 됩니다. 토큰·chat id 는 저장소·이슈·대화에 절대 붙여 넣지 않습니다.
 
 ## 2-1. 작업 기록과 패시브 스킬 [자동 다운로드]
 

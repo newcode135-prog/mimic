@@ -5,3 +5,4 @@ desktop/dist/
 cli/node_modules/
 *.log
 .env
+.mimic-note-ledger/
