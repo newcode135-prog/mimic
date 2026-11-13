@@ -19,9 +19,11 @@ import { fileURLToPath } from 'node:url';
 import { NOTE_DIR, loadMembers, loadDb, readEnv, chatIdFor, telegramApi } from '../lib.mjs';
 import { loadAllWorks } from '../work.mjs';
 import { computeAuto, diffForNotify, formatNotify, RULES_VERSION } from './rules.mjs';
+import { consult, applySuggestions } from '../harness/harness.mjs';
 
 const ROOT = path.resolve(NOTE_DIR, '..');
 const AUTO_REL = 'mimic-note/data/auto/todos.json';
+const HARNESS_REL = 'mimic-note/data/harness/suggestions.json';
 const STALE_LOCK_MS = 15 * 60 * 1000;
 
 export function autoPath(dir = NOTE_DIR) {
@@ -50,9 +52,10 @@ export function acquireLock(lockDir) {
 const git = (args) => execFileSync('git', ['-C', ROOT, ...args], { stdio: 'pipe', encoding: 'utf8' }).trim();
 
 function pushWithRetry(message, log) {
-  git(['add', AUTO_REL]);
-  if (!git(['status', '--porcelain', '--', AUTO_REL])) return 'nothing';
-  git(['-c', 'user.name=미믹노트 패시브 스킬', '-c', 'user.email=mimic-note@localhost', 'commit', '-q', '-m', message, '--', AUTO_REL]);
+  const paths = [AUTO_REL, HARNESS_REL].filter((p) => fs.existsSync(path.join(ROOT, p)));
+  git(['add', ...paths]);
+  if (!git(['status', '--porcelain', '--', ...paths])) return 'nothing';
+  git(['-c', 'user.name=미믹노트 패시브 스킬', '-c', 'user.email=mimic-note@localhost', 'commit', '-q', '-m', message, '--', ...paths]);
   for (let i = 1; i <= 3; i++) {
     try {
       git(['push', '-q', 'origin', 'HEAD']);
@@ -80,6 +83,7 @@ export async function runOnce(opts = {}) {
     now = new Date().toISOString(),
     log = (m) => console.log(`[${new Date().toISOString()}] ${m}`),
     send = (token, chatId, text) => telegramApi(token, 'sendMessage', { chat_id: chatId, text }),
+    ask, // AI 하네스 호출(테스트에서 갈아끼움). 없으면 ANTHROPIC_API_KEY 가 있을 때만 Claude 를 부른다
   } = opts;
 
   const release = acquireLock(path.join(os.tmpdir(), `mimic-note-auto-${Buffer.from(dir).toString('hex').slice(-16)}.lock`));
@@ -89,7 +93,14 @@ export async function runOnce(opts = {}) {
 
     const members = loadMembers(dir);
     const works = loadAllWorks(members, dir);
-    const result = computeAuto({ members, db: loadDb(dir), works });
+    const db = loadDb(dir);
+    const result = computeAuto({ members, db, works });
+    // AI 하네스: 규칙이 애매하다고 넘긴 후보만, 처음 볼 때 한 번 Claude 에게 묻는다. 실패해도 규칙 결과로 계속.
+    let ai = { called: 0, changed: false, active: [] };
+    try {
+      ai = await consult({ escalations: result.escalations, members, db, works, dir, env, now, log, ...(ask ? { ask } : {}) });
+    } catch (e) { log(`AI 하네스 건너뜀: ${e.message}`); }
+    applySuggestions(result.players, ai.active, members);
     const broken = Object.entries(works).filter(([, w]) => w.broken).map(([id]) => id);
     if (broken.length) log(`작업 기록 파일이 깨져 건너뜀: ${broken.join(', ')}`);
 
@@ -99,7 +110,7 @@ export async function runOnce(opts = {}) {
     const changed = !prev || JSON.stringify(prev.players) !== JSON.stringify(result.players);
 
     let pushed = 'unchanged';
-    if (changed) {
+    if (changed || ai.changed) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, JSON.stringify({ rulesVersion: RULES_VERSION, generatedAt: now, players: result.players }, null, 2) + '\n');
       if (useGit) pushed = pushWithRetry(`패시브 스킬 [자동 다운로드]: 투두 갱신 (${notes.length}명)`, log);
@@ -128,10 +139,10 @@ export async function runOnce(opts = {}) {
     fs.mkdirSync(hdir, { recursive: true });
     fs.appendFileSync(path.join(hdir, 'decisions.jsonl'), JSON.stringify({
       at: now, rulesVersion: RULES_VERSION, fired: result.fired, escalations: result.escalations,
-      notified: delivered, changed, aiCalled: false,
+      notified: delivered, changed, aiCalled: ai.called > 0, aiCalls: ai.called,
     }) + '\n');
     // 규칙이 애매하다고 본 경우: 지금은 기록만 한다(AI 호출 기준은 AI 하네스가 정할 몫 — harness/README.md)
-    if (result.escalations.length) log(`AI 검토 후보 ${result.escalations.length}건 기록(아직 AI 호출 안 함)`);
+    if (result.escalations.length) log(`AI 검토 후보 ${result.escalations.length}건, 이번 회차 AI 호출 ${ai.called}회, 유효한 제안 ${ai.active.length}개`);
 
     log(`완료: 변경 ${changed ? '있음' : '없음'}, 알림 ${delivered.map((d) => `${d.id}(${d.via.join('+')})`).join(', ') || '없음'}, git ${pushed}`);
     return { changed, notes, delivered, pushed, result };

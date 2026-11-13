@@ -1,6 +1,23 @@
 # AI 하네스 — 언제, 어떻게 AI 를 부를지 스스로 배우는 장치 (주인 구함)
 
-> 상태: **틀만 있음 · 담당자를 기다리는 중.** 찾은 사람이 맡아서 완성합니다. 관련 GitHub 이슈의 "AI 하네스" 항목을 확인하세요.
+> 상태: **v1 동작(2026-11-13)** — `harness.mjs`. 패시브 스킬이 매 회차 부르고, `ANTHROPIC_API_KEY` 가 있을 때만 Claude 를 부릅니다. 정확도 올리기(아래 "맡은 사람이 할 일" 2·4번)는 계속 주인 구함.
+
+## v1 이 하는 일 (`harness.mjs`)
+
+```
+규칙(rules.mjs) → AI 검토 후보(escalations)
+   └─ 호출 기준 v1: 처음 보는 후보만 · 실패는 3번까지 · 키 없으면 안 부름(비용 0)
+        └─ Claude(claude-opus-5-5, effort low, JSON 출력) ← 대전제 + 상황 + 작업 기록 + 남은 미션
+             └─ "모두가 만족하는 세 번째 제안" 1~2문장 + 담당 제안(명부에 있는 아이디만)
+                  ├─ data/harness/suggestions.json 에 저장 → 다음 회차는 재사용(다시 안 부름)
+                  └─ 관련 플레이어의 ⚡ 더 중요한 일에 "💡 AI 제안 H-001(관리자 결정 필요)" 로 표시
+관리자 판정 = 정답 데이터 → data/harness/verdicts.json
+   node mimic-note/harness/harness.mjs verdict H-001 수락|거절 --by 창민 "메모"   (거절하면 화면에서 사라짐)
+   node mimic-note/harness/harness.mjs eval    호출 수 · 제안 수 · 수락률
+```
+
+- 호출이 실패하거나 거절(refusal)돼도 패시브 스킬은 규칙 결과로 계속 돕니다.
+- 실행 위치에 `ANTHROPIC_API_KEY`(맥미니 `.env` 또는 GitHub Actions 비밀값)를 넣어야 실제로 부릅니다. 키는 파일·채팅에 붙여넣지 않습니다.
 
 ## 왜 필요한가
 
@@ -19,7 +36,7 @@
 | `fired` | 어떤 규칙이 발동했는지(E1 겹침, E2 이미 완료, T3 다음 단계 제안) |
 | `escalations` | 규칙이 **AI 검토 후보**로 넘긴 경우(같은 일을 여러 명이 진행, 다음 단계 담당이 애매함) |
 | `notified` | 누구에게 어떤 경로로 알렸는지 |
-| `aiCalled` | AI 를 실제로 불렀는지(지금은 항상 false) |
+| `aiCalled` · `aiCalls` | 이번 회차에 AI 를 불렀는지 · 몇 번 불렀는지 |
 
 ## 맡은 사람이 할 일 (제안)
 
