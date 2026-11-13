@@ -97,7 +97,7 @@ export function doneMissions(db, memberId) {
 }
 
 // 미션은 관리자(owner·admin)만 만든다.
-export function addMission(db, { assignee, title, detail = '', by }, members, now = new Date().toISOString()) {
+export function addMission(db, { assignee, title, detail = '', by, top = false }, members, now = new Date().toISOString()) {
   const target = requireMember(assignee, members);
   const author = requireMember(by, members);
   if (!ADMIN_ROLES.has(author.role)) throw new Error(`${author.name}님은 관리자가 아니라 미션을 만들 수 없습니다.`);
@@ -106,7 +106,8 @@ export function addMission(db, { assignee, title, detail = '', by }, members, no
   const mission = {
     id: `M-${String(db.nextId).padStart(4, '0')}`,
     assignee: target.id,
-    order: mine.reduce((max, m) => Math.max(max, m.order ?? 0), 0) + 1,
+    // top: 최우선 — 그 사람의 1번으로 들어간다
+    order: top ? mine.reduce((min, m) => Math.min(min, m.order ?? 0), 1) - 1 : mine.reduce((max, m) => Math.max(max, m.order ?? 0), 0) + 1,
     title: String(title).trim(),
     detail: String(detail || '').trim(),
     status: 'todo',

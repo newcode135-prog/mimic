@@ -3,6 +3,7 @@
 //
 //   node mimic-note/mission.mjs list [이름]                          남은 미션 보기(이름 없으면 전체)
 //   node mimic-note/mission.mjs add <이름> "제목" ["설명"] --by 창민   미션 추가(관리자만)
+//   node mimic-note/mission.mjs add <이름> "제목" ["설명"] --by 창민 --top   최우선(그 사람의 1번)으로 추가
 //   node mimic-note/mission.mjs done <이름> <번호|M-0001>            미션 완료
 //
 // 바꾼 내용은 git commit·push 해야 다른 팀원·Claude Code 에게 보인다.
@@ -21,6 +22,8 @@ function takeFlag(args, name) {
 export function run(argv, dir) {
   const args = [...argv];
   const by = takeFlag(args, '--by');
+  const top = args.includes('--top');
+  if (top) args.splice(args.indexOf('--top'), 1);
   const [cmd, ...rest] = args;
   const members = loadMembers(dir);
   const db = loadDb(dir);
@@ -42,7 +45,7 @@ export function run(argv, dir) {
   if (cmd === 'add') {
     const [who, title, detail] = rest;
     if (!by) throw new Error('누가 만드는지 --by <관리자 이름> 을 붙여 주세요. 예: --by 창민');
-    const m = addMission(db, { assignee: who, title, detail, by }, members);
+    const m = addMission(db, { assignee: who, title, detail, by, top }, members);
     saveDb(db, dir);
     const member = requireMember(who, members);
     const no = openMissions(db, member.id).findIndex((x) => x.id === m.id) + 1;

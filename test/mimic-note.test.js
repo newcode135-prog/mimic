@@ -101,3 +101,11 @@ test('체크인: 대전제가 먼저, 미션이 그다음', () => {
   assert.match(lucas, /루카스님, 지금 남은 미션이 없습니다/);
   assert.match(lucas, /관리자\(창민·민호\)가 등록/);
 });
+
+test('--top 으로 넣은 미션은 그 사람의 1번이 된다', () => {
+  const db = { nextId: 1, missions: [] };
+  addMission(db, { assignee: '창민', title: 'A', by: '창민' }, members);
+  addMission(db, { assignee: '창민', title: 'B', by: '창민' }, members);
+  addMission(db, { assignee: '창민', title: '최우선', by: '창민', top: true }, members);
+  assert.deepEqual(openMissions(db, 'changmin').map((m) => m.title), ['최우선', 'A', 'B']);
+});

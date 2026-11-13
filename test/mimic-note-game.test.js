@@ -52,7 +52,7 @@ test('실제 저장소: 창민 체크인에 ④ 마지막 사고력 게임이 �
   assert.ok(i4 > text.indexOf('① 대전제'));
   const last = latestGame(loadGames('changmin'));
   assert.ok(text.slice(i4).includes(`${last.id} · ${last.title}`));
-  assert.match(text.slice(i4), /Claude 의 답: (봉인됨|\[)/);
+  assert.match(text.slice(i4), /Claude 의 답: \S/);
   assert.ok(!fs.readFileSync(path.join(NOTE_DIR, 'data', 'players', 'changmin', 'games.json'), 'utf8').includes('"salt"'), '소금은 저장소에 없어야 한다');
 });
 

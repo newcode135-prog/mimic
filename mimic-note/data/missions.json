@@ -1,5 +1,5 @@
 {
-  "nextId": 15,
+  "nextId": 16,
   "missions": [
     {
       "id": "M-0001",
@@ -153,6 +153,17 @@
       "status": "todo",
       "createdBy": "changmin",
       "createdAt": "2026-11-13T03:05:06.021Z",
+      "doneAt": null
+    },
+    {
+      "id": "M-0015",
+      "assignee": "changmin",
+      "order": 0,
+      "title": "[최우선] G-002 답하기: 대전제 13조 → [꿰] 10대전제",
+      "detail": "Claude 답은 먼저 공개됨(node mimic-note/game.mjs 창민). 창민님 답을 내고(answer), 판정 또는 패배 인정(concede)으로 끝내기. 이 결과가 대전제 v0.4 가 된다.",
+      "status": "todo",
+      "createdBy": "changmin",
+      "createdAt": "2026-11-13T03:33:13.549Z",
       "doneAt": null
     }
   ]
