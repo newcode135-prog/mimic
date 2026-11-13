@@ -93,3 +93,27 @@ test('[로그아웃]: 미리 채운 최종본 → 업로드(번호 자동·작�
   fs.writeFileSync(p.finalFile, good(0));
   assert.throws(() => upload(me, p.finalFile, { dir, home, push: false }), /형식 검사 실패/);
 });
+
+test('데이터 유실 방지: 새 업로드는 안 덮고, --replace 는 이전 판 보존, --stay 는 접속 유지, ①을 다시 해도 .bak', () => {
+  const home = tmp(); const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
+  fs.copyFileSync(path.join(NOTE_DIR, 'data', 'members.json'), path.join(dir, 'data', 'members.json'));
+  fs.writeFileSync(path.join(home, 'session.json'), JSON.stringify({ player: 'changmin', at: '2026-11-13T00:00:00Z' }));
+  const tr = path.join(tmp(), 's.jsonl'); fs.writeFileSync(tr, user('x', '2026-11-13T01:00:00Z'));
+  const me = findMember('창민', members);
+  const p = prepare(me, { home, transcript: tr, dir, date: '2026-11-13' });
+  fs.writeFileSync(p.finalFile, good());
+  prepare(me, { home, transcript: tr, dir, date: '2026-11-13' });
+  assert.ok(fs.readdirSync(path.dirname(p.finalFile)).some((f) => f.endsWith('.bak.md')));
+  fs.writeFileSync(p.finalFile, good());
+  const r1 = upload(me, p.finalFile, { dir, home, push: false, stay: true, date: '2026-11-13' });
+  assert.ok(fs.existsSync(path.join(home, 'session.json')));
+  const up = path.join(dir, 'data', 'players', 'changmin', 'uploads');
+  fs.writeFileSync(p.finalFile, good(3));
+  const r2 = upload(me, p.finalFile, { dir, home, push: false, stay: true, replace: r1.name, date: '2026-11-13' });
+  assert.equal(r2.name, r1.name);
+  assert.match(fs.readFileSync(r2.replaced, 'utf8'), /\[라벨1\]/);
+  assert.ok(!fs.readFileSync(r2.replaced, 'utf8').includes('[라벨2]'));
+  assert.match(fs.readFileSync(path.join(up, r1.name), 'utf8'), /\[라벨2\]/);
+  assert.throws(() => upload(me, p.finalFile, { dir, home, push: false, replace: '없는.md' }), /덮어쓸 업로드가 없습니다/);
+});

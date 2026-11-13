@@ -3,6 +3,9 @@
 //
 //   node mimic-note/logout.mjs <이름>                    ① 1차 압축 마무리 → 미리 채운 최종본 경로·초안·형식 규칙 출력
 //   node mimic-note/logout.mjs <이름> --upload [파일]     ② 형식·분량 검사 → uploads/ 저장 → 작업 기록 3단계 → commit·push(한 번에)
+//        --stay                 중간 업로드: 접속을 유지해 패시브 1차 압축이 계속 쌓인다
+//        --replace <업로드이름>  덮어쓰기(예: 2026-11-13-대화-5.md). 이전 내용은 git 기록 + uploads/.history/ 에 남는다
+// 데이터 유실 방지: 새 업로드는 기존 파일을 절대 덮지 않고, ①을 다시 해도 고치던 최종본은 .bak 으로 남긴다.
 //
 // ①과 ② 사이에 Claude Code 가 최종본(라벨·결정·다음)을 고친다. 규칙(형식·상한·하한)은 FORMAT 한 곳에서 정한다.
 import fs from 'node:fs';
@@ -92,38 +95,52 @@ export function prepare(member, { home = HOME_DIR(), transcript = latestTranscri
   const name = nextUploadName(member.id, date, dir);
   const finalFile = draftPath(member.id, sid, home).replace(/\.jsonl$/, '.final.md');
   fs.mkdirSync(path.dirname(finalFile), { recursive: true });
+  if (fs.existsSync(finalFile)) fs.copyFileSync(finalFile, finalFile.replace(/\.md$/, `.${Date.now()}.bak.md`)); // 고치던 것 보존
   fs.writeFileSync(finalFile, skeleton(member, draft, name));
   return { finalFile, name, draft };
 }
 
 const git = (root, args) => execFileSync('git', ['-C', root, ...args], { stdio: 'pipe', encoding: 'utf8' }).trim();
 
-export function upload(member, file, { dir = NOTE_DIR, home = HOME_DIR(), push = true, date = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10) } = {}) {
+export function upload(member, file, { dir = NOTE_DIR, home = HOME_DIR(), push = true, stay = false, replace = null, date = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10) } = {}) {
   const text = fs.readFileSync(file, 'utf8');
   const v = validate(text);
   if (!v.ok) throw new Error(`형식 검사 실패(${FORMAT.version}):\n- ${v.errors.join('\n- ')}`);
-  const name = nextUploadName(member.id, date, dir);
-  fs.mkdirSync(uploadsDir(member.id, dir), { recursive: true });
-  fs.writeFileSync(path.join(uploadsDir(member.id, dir), name), text);
+  const up = uploadsDir(member.id, dir);
+  fs.mkdirSync(up, { recursive: true });
+  let name = nextUploadName(member.id, date, dir);
+  let replaced = null;
+  if (replace) {
+    name = path.basename(replace);
+    const old = path.join(up, name);
+    if (!fs.existsSync(old)) throw new Error(`덮어쓸 업로드가 없습니다: ${name}`);
+    const hist = path.join(up, '.history');
+    fs.mkdirSync(hist, { recursive: true });
+    replaced = path.join(hist, `${name.replace(/\.md$/, '')}.${new Date().toISOString().replace(/[:.]/g, '-')}.md`);
+    fs.copyFileSync(old, replaced); // 이전 판 보존
+  } else if (fs.existsSync(path.join(up, name))) {
+    throw new Error(`이미 있는 업로드라 덮지 않습니다: ${name}`);
+  }
+  fs.writeFileSync(path.join(up, name), text);
   const target = `대화-${name.replace(/\.md$/, '').replace(/-대화-/, '-')}`;
   const work = loadWork(member.id, dir);
   recordWork(work, { stage: 'labeling', target, status: 'done', note: `[ ] 라벨 ${v.counts.labels}개` });
   recordWork(work, { stage: 'compression', target, status: 'done', note: `결정 ${v.counts.decisions}개, ${v.counts.chars}자` });
-  recordWork(work, { stage: 'upload', target, status: 'done', note: `uploads/${name}` });
+  recordWork(work, { stage: 'upload', target, status: 'done', note: `uploads/${name}${replaced ? ` (덮어씀, 이전 판 ${path.relative(up, replaced)})` : ''}` });
   saveWork(work, dir);
   let pushed = 'skipped';
   if (push) {
     const root = path.resolve(dir, '..');
     const rel = path.relative(root, path.join(dir, 'data', 'players', member.id));
     git(root, ['add', rel]);
-    git(root, ['commit', '-q', '-m', `[업로드] ${member.name}: ${name.replace(/\.md$/, '')} ([로그아웃])`, '--', rel]);
+    git(root, ['commit', '-q', '-m', `[업로드] ${member.name}: ${name.replace(/\.md$/, '')} (${replaced ? '덮어쓰기' : stay ? '중간 업로드' : '[로그아웃]'})`, '--', rel]);
     pushed = 'failed';
     for (let i = 0; i < 3 && pushed !== 'pushed'; i++) {
       try { git(root, ['push', '-q', 'origin', 'HEAD']); pushed = 'pushed'; } catch { git(root, ['pull', '-q', '--rebase', '--autostash']); }
     }
   }
-  fs.rmSync(sessionFile(home), { force: true }); // 로그아웃: 패시브 1차 압축이 멈춘다
-  return { name, pushed, counts: v.counts };
+  if (!stay) fs.rmSync(sessionFile(home), { force: true }); // 로그아웃: 패시브 1차 압축이 멈춘다
+  return { name, pushed, counts: v.counts, replaced };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -133,8 +150,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const t0 = Date.now();
     if (args.includes('--upload')) {
       const f = args[args.indexOf('--upload') + 1] || prepare(member).finalFile;
-      const r = upload(member, f);
-      console.log(`[로그아웃] ${member.name}님 업로드 완료: uploads/${r.name} · 라벨 ${r.counts.labels} · 결정 ${r.counts.decisions} · ${r.counts.chars}자 · push ${r.pushed} · ${((Date.now() - t0) / 1000).toFixed(1)}초`);
+      const r = upload(member, f, { stay: args.includes('--stay'), replace: args.includes('--replace') ? args[args.indexOf('--replace') + 1] : null });
+      console.log(`[로그아웃] ${member.name}님 업로드 완료: uploads/${r.name} · 라벨 ${r.counts.labels} · 결정 ${r.counts.decisions} · ${r.counts.chars}자 · push ${r.pushed}${r.replaced ? ' · 덮어씀(이전 판 보존)' : ''}${args.includes('--stay') ? ' · 접속 유지' : ' · 로그아웃'} · ${((Date.now() - t0) / 1000).toFixed(1)}초`);
     } else {
       const r = prepare(member);
       const asks = r.draft.filter((e) => e.kind === 'ask').length;
