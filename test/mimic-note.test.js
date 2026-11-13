@@ -49,7 +49,7 @@ test('미션 추가는 관리자만, 번호는 담당자별로 1번부터', () =
   assert.deepEqual([a.id, b.id, c.id], ['M-0001', 'M-0002', 'M-0003']);
   assert.deepEqual([a.order, b.order, c.order], [1, 2, 1]);
   assert.equal(a.createdBy, 'changmin');
-  assert.throws(() => addMission(db, { assignee: '민호', title: 'x', by: '유리' }, members), /관리자가 아니라/);
+  assert.throws(() => addMission(db, { assignee: '민호', title: 'x', by: '네이뜬' }, members), /관리자가 아니라/);
   assert.throws(() => addMission(db, { assignee: '민호', title: '  ', by: '창민' }, members), /비어 있습니다/);
   assert.throws(() => addMission(db, { assignee: '철수', title: 'x', by: '창민' }, members), /찾지 못했습니다/);
 });
