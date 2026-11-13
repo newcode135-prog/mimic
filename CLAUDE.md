@@ -16,7 +16,7 @@ node mimic-note/checkin.mjs <이름>
 - 플레이어가 [데이터 라벨링]·[데이터 압축]·[데이터 업로드]를 했다고 하면 `node mimic-note/work.mjs <이름> <라벨링|압축|업로드> <대상> <시작|완료>` → 그 사람 폴더(`data/players/<아이디>/`)만 commit·push. 남의 폴더와 `data/auto/` 는 손대지 않는다.
 - `data/auto/todos.json` 은 패시브 스킬 [자동 다운로드](`mimic-note/passive/`)만 쓴다.
 - [사고력 게임]: 체크인 ④에 마지막 게임이 나온다. 플레이어가 답하면 `node mimic-note/game.mjs <이름> answer "<답>"` → commit·push. 출제자 답은 봉인돼 있으며, 공개용 소금은 출제한 컴퓨터에만 있다(저장소에 올리지 않는다).
-- 미션 추가는 관리자(창민·민호)만: `node mimic-note/mission.mjs add <이름> "제목" "설명" --by <관리자>`
+- 미션 추가는 관리자(창민·민호·유리)만: `node mimic-note/mission.mjs add <이름> "제목" "설명" --by <관리자>`
 - 팀원 명부·진행 기록은 `mimic-note/README.md`(미믹노트, 중앙 컴퓨터). 토큰·chat id 는 파일에 쓰지 않는다(공개 저장소).
 
 ## 1. 작업 전에 예상 시간부터 보여 준다 (항상)

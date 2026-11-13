@@ -3,7 +3,7 @@
   "members": [
     { "id": "changmin", "name": "창민", "role": "owner", "github": null },
     { "id": "minho", "name": "민호", "role": "admin", "github": null },
-    { "id": "yuri", "name": "유리", "role": "member", "github": null },
+    { "id": "yuri", "name": "유리", "role": "admin", "github": null },
     { "id": "nathan", "name": "네이뜬", "role": "member", "github": null },
     { "id": "lucas", "name": "루카스", "role": "member", "github": null }
   ]
