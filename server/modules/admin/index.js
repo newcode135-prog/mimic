@@ -14,6 +14,8 @@ const BLOCK_KINDS = ['url', 'domain', 'infohash', 'blob'];
 const QUOTA_KINDS = ['cloud', 'down', 'up', 'cloud_count'];
 const RESOLVE_ACTIONS = ['dismiss', 'block', 'suspend', 'unblock'];
 const REASON_KO = { copyright: '저작권 침해', child: '아동 보호', illegal_filming: '불법 촬영물', adult: '음란물', violence: '폭력·혐오', malware: '악성코드·피싱', spam: '스팸·사기', privacy: '개인정보 노출', other: '기타' };
+const REASON_EN = { copyright: 'copyright infringement', child: 'child safety', illegal_filming: 'non-consensual imagery', adult: 'sexual content', violence: 'violence or hate', malware: 'malware or phishing', spam: 'spam or scam', privacy: 'exposure of personal information', other: 'other' };
+const LABEL_EN = { report: 'report', copyright: 'copyright notice', appeal: 'appeal' };
 const hostOf = (v) => {
   try {
     return new URL(v).host.toLowerCase();
@@ -54,10 +56,16 @@ export function normBlock(kind, value) {
       if (!h) fail(400, 'invalid_value', '마그넷 링크에서 infohash 를 찾지 못했습니다');
       return { kind: 'infohash', value: h };
     }
-    // offline 모듈은 new URL(링크).href 와 그대로 비교하므로 같은 형태로 맞춘다
+    // offline 모듈은 비교할 때 양쪽 주소를 모두 정규화한다(engine.js blockForm). 저장은 목록 표시·중복 확인용으로
+    // new URL().href 에서 '#조각'과 빈 '?' 만 뗀 모양으로 한다(서버가 받는 요청은 같다)
     let href = null;
     try {
-      href = /^(https?|ftp):\/\/\S+$/i.test(v) ? new URL(v).href : null;
+      if (/^(https?|ftp):\/\/\S+$/i.test(v)) {
+        const u = new URL(v);
+        u.hash = '';
+        if (!u.search) u.search = '';
+        href = u.href;
+      }
     } catch {}
     if (!href) fail(400, 'invalid_value', 'http(s) 주소나 마그넷 링크를 입력하세요');
     return { kind, value: href };
@@ -304,19 +312,38 @@ export function register(app, ctx) {
     log(req, 'user.suspend', { target: u.id, hours, reason: reason || null });
     // 이의제기 폼을 '사용자 · 내 연락처'로 미리 채워 둔다(그대로 보내면 unblock 으로 정지가 풀리게)
     const appeal = appealLink('user', u.email || u.phone || u.id);
-    const body = `${new Date(until).toISOString().slice(0, 16).replace('T', ' ')}(UTC)까지 제한됩니다. 이의가 있으면 이의제기로 알려 주세요.`;
-    notify(db, u.id, { kind: 'account', title: '계정 이용이 일시 제한되었어요', body, link: appeal, titleEn: 'Your account is temporarily restricted', bodyEn: `Restricted until ${new Date(until).toISOString().slice(0, 16).replace('T', ' ')} (UTC). If you disagree, please file an appeal.` });
+    const at = new Date(until).toISOString().slice(0, 16).replace('T', ' ');
+    const body = `${at}(UTC)까지 제한됩니다. 이의가 있으면 이의제기로 알려 주세요.`;
+    const bodyEn = `Restricted until ${at} (UTC). If you disagree, please file an appeal.`;
+    notify(db, u.id, { kind: 'account', title: '계정 이용이 일시 제한되었어요', body, link: appeal, titleEn: 'Your account is temporarily restricted', bodyEn });
     // 정지된 회원은 사이트 알림 API(requireUser)를 못 쓰므로 이메일·문자로도 알린다
-    tell(u, '[미믹] 계정 이용 제한 안내', `${body}\n이의제기: ${cfg.baseUrl}${appeal}`);
+    tell(u, '[미믹] 계정 이용 제한 안내', `${body}\n이의제기: ${cfg.baseUrl}${appeal}`, ['[Mimic] Your account has been restricted', `${bodyEn}\nAppeal: ${cfg.baseUrl}${appeal}`]);
   }
   const appealLink = (type, target) => `/copyright?tab=appeal&type=${type}&target=${encodeURIComponent(String(target).split('#')[0])}`;
-  // 이메일, 없으면 문자로 보낸다
-  function tell(u, subject, body) {
+  // 이메일, 없으면 문자로 보낸다. en = [제목, 본문]: 회원 언어가 영어면 이쪽을 보낸다
+  function tell(u, subject, body, en) {
+    if (u.lang === 'en' && en) [subject, body] = en;
     if (u.email) sendMessage(db, cfg, { channel: 'email', to: u.email, subject, body });
     else if (u.phone) sendMessage(db, cfg, { channel: 'sms', to: u.phone, body: `${subject} ${body}` });
   }
 
   // ---------- 차단 목록(A-08 의 원본) ----------
+  // 예전 코드는 url 을 '#조각'·빈 '?' 를 붙인 채 저장했다 → 시작할 때 지금 모양으로 맞춰 신고 해제(unblock)·중복 확인이 맞게 한다.
+  // 맞춘 값이 이미 있으면 예전 행은 지운다(offline 비교는 둘을 같은 주소로 보므로 차단 범위는 그대로)
+  for (const row of db.prepare("SELECT id, value FROM blocklist WHERE kind='url' AND (value LIKE '%#%' OR value LIKE '%?')").all()) {
+    let v;
+    try {
+      v = normBlock('url', row.value).value;
+    } catch {
+      continue;
+    }
+    if (v === row.value) continue;
+    try {
+      db.prepare('UPDATE blocklist SET value=? WHERE id=?').run(v, row.id);
+    } catch {
+      db.prepare('DELETE FROM blocklist WHERE id=?').run(row.id);
+    }
+  }
   r('get', '/blocklist', (req, res) => {
     const kind = BLOCK_KINDS.includes(req.query.kind) ? req.query.kind : null;
     const q = String(req.query.q || '').trim().slice(0, 200);
@@ -476,8 +503,10 @@ export function register(app, ctx) {
       const link = appealLink(loc.type, loc.value);
       const [subj, obj] = loc.type === 'share' ? ['공유가', '공유를'] : ['파일이', '파일을'];
       const body = `${label}(접수번호 ${rep.id})에 따라 회원님의 ${obj} 차단했어요. 사유: ${REASON_KO[rep.reason] || rep.reason}${note ? ` — ${note}` : ''}. 잘못된 조치라면 이의제기해 주세요.`;
-      notify(db, u.id, { kind: 'report', title: `신고로 ${subj} 차단되었어요`, titleEn: `Your ${loc.type === 'share' ? 'share' : 'file'} was blocked after a report`, body, link });
-      tell(u, '[미믹] 콘텐츠 차단 안내', `${body}\n대상: ${loc.value.split('#')[0]}\n이의제기: ${cfg.baseUrl}${link}`);
+      const what = loc.type === 'share' ? 'share' : 'file';
+      const bodyEn = `Following a ${LABEL_EN[rep.kind] || 'report'} (ref. ${rep.id}), we blocked your ${what}. Reason: ${REASON_EN[rep.reason] || rep.reason}${note ? ` — ${note}` : ''}. If you think this is a mistake, please file an appeal.`;
+      notify(db, u.id, { kind: 'report', title: `신고로 ${subj} 차단되었어요`, titleEn: `Your ${what} was blocked after a report`, body, bodyEn, link });
+      tell(u, '[미믹] 콘텐츠 차단 안내', `${body}\n대상: ${loc.value.split('#')[0]}\n이의제기: ${cfg.baseUrl}${link}`, [`[Mimic] Your ${what} was blocked`, `${bodyEn}\nBlocked item: ${loc.value.split('#')[0]}\nAppeal: ${cfg.baseUrl}${link}`]);
     }
   }
 
@@ -533,8 +562,9 @@ export function register(app, ctx) {
       notify(db, reporter.id, { kind: 'report', title: `${label} 처리 결과: ${title}`, titleEn: `${rep.kind === 'appeal' ? 'Appeal' : 'Report'} result: ${titleEn}`, body: note });
       // 정지된 회원은 사이트 알림을 못 읽는다(403) → 이의제기 결과·정지 중인 신고자는 이메일·문자로도
       const suspended = reporter.status === 'suspended' && (!reporter.status_until || reporter.status_until > now());
-      if (rep.kind === 'appeal' || suspended) tell(reporter, `[미믹] ${label} 처리 결과`, `접수번호 ${rep.id}: ${title}${note ? `
-${note}` : ''}`);
+      const labelEn = LABEL_EN[rep.kind] || 'report';
+      if (rep.kind === 'appeal' || suspended)
+        tell(reporter, `[미믹] ${label} 처리 결과`, `접수번호 ${rep.id}: ${title}${note ? `\n${note}` : ''}`, [`[Mimic] Result of your ${labelEn}`, `We reviewed your ${labelEn} (ref. ${rep.id}). Result: ${titleEn}.${note ? `\n${note}` : ''}`]);
     } else if (rep.reporter_email) sendMessage(db, cfg, { channel: 'email', to: rep.reporter_email, subject: `[미믹] ${label} 처리 결과`, body: `접수번호 ${rep.id}: ${title}${note ? `\n${note}` : ''}` });
     res.json({ report: reportApi(db.prepare('SELECT * FROM content_reports WHERE id=?').get(rep.id)), ...result });
   });
@@ -557,7 +587,10 @@ ${note}` : ''}`);
     if (!m) fail(404, 'not_found', '문의를 찾을 수 없습니다');
     const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
     if (!body || body.length > 5000) fail(400, 'invalid_body', '답변 내용을 입력하세요');
-    sendMessage(db, cfg, { channel: 'email', to: m.email, subject: '[미믹 고객지원] 문의에 답변드립니다', body: `${body}\n\n— 접수번호 ${m.id}` });
+    const en = !!m.user_id && db.prepare('SELECT lang FROM users WHERE id=?').get(m.user_id)?.lang === 'en';
+    sendMessage(db, cfg, en
+      ? { channel: 'email', to: m.email, subject: '[Mimic Support] Reply to your inquiry', body: `${body}\n\n— Reference number ${m.id}` }
+      : { channel: 'email', to: m.email, subject: '[미믹 고객지원] 문의에 답변드립니다', body: `${body}\n\n— 접수번호 ${m.id}` });
     if (m.user_id) notify(db, m.user_id, { kind: 'support', title: '문의에 답변이 도착했어요', titleEn: 'You have a reply to your inquiry', body: body.slice(0, 200) });
     db.prepare("UPDATE content_messages SET status='answered', answer=?, answered_at=? WHERE id=?").run(body, now(), m.id);
     log(req, 'message.reply', { message: m.id });

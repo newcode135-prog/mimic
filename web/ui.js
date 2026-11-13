@@ -10,7 +10,8 @@ export class ApiError extends Error {
 }
 // api('/api/drive/list', { method:'POST', body:{...} }) → JSON. FormData 는 그대로 보낸다
 export async function api(path, { method = 'GET', body, headers = {}, signal } = {}) {
-  const opts = { method, headers: { ...headers }, credentials: 'same-origin', signal };
+  // 서버가 콘텐츠·알림을 지금 화면 언어로 돌려주게 알린다(K-03)
+  const opts = { method, headers: { 'x-mimic-lang': getLang(), ...headers }, credentials: 'same-origin', signal };
   if (body instanceof FormData || body instanceof Blob) opts.body = body;
   else if (body !== undefined) {
     opts.headers['content-type'] = 'application/json';

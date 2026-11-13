@@ -142,6 +142,18 @@ const needSession = (req) => {
 };
 const sessionOnly = (req, _res, next) => (needSession(req), next());
 const getUser = (db, id) => db.prepare('SELECT * FROM users WHERE id=?').get(id);
+// K-03: 가입 전에는 화면 언어(x-mimic-lang 헤더), 없으면 브라우저 언어(Accept-Language)로 영어 여부를 본다. 가입 때 계정 언어(users.lang)를 정하는 기준과 같다
+const wantsEn = (req) => {
+  const l = req?.get?.('x-mimic-lang');
+  return l === 'en' || l === 'ko' ? l === 'en' : /^en/i.test(req?.get?.('accept-language') || '');
+};
+// 이메일, 없으면 SMS 로 알린다. ko·en 은 [제목, 본문], 계정 언어가 영어면 en
+function mailUser(db, cfg, u, ko, en) {
+  const [subject, body] = u.lang === 'en' ? en : ko;
+  const tag = u.lang === 'en' ? '[Mimic]' : '[미믹]';
+  if (u.email) sendMessage(db, cfg, { channel: 'email', to: u.email, subject: `${tag} ${subject}`, body });
+  else if (u.phone) sendMessage(db, cfg, { channel: 'sms', to: u.phone, body: `${tag} ${body}` });
+}
 
 function emit(ctx, name, payload) {
   try {
@@ -209,11 +221,16 @@ function issueCode(db, cfg, req, { target, purpose, channel }) {
     now(),
     now() + CODE_TTL,
   );
+  // K-03: 받는 계정(없으면 로그인한 계정)의 언어로, 가입 전이면 브라우저 언어로
+  const owner = db.prepare('SELECT lang FROM users WHERE email=? OR phone=?').get(target, target) || req.user;
+  const en = owner ? owner.lang === 'en' : wantsEn(req);
   sendMessage(db, cfg, {
     channel,
     to: target,
-    subject: channel === 'email' ? '[미믹] 인증코드 안내' : null,
-    body: `미믹 인증코드는 ${code} 입니다. 5분 안에 입력해 주세요. 직접 요청하지 않았다면 이 메시지는 무시하셔도 됩니다.`,
+    subject: channel !== 'email' ? null : en ? '[Mimic] Your verification code' : '[미믹] 인증코드 안내',
+    body: en
+      ? `Your Mimic verification code is ${code}. Enter it within 5 minutes. If you didn't request it, you can ignore this message.`
+      : `미믹 인증코드는 ${code} 입니다. 5분 안에 입력해 주세요. 직접 요청하지 않았다면 이 메시지는 무시하셔도 됩니다.`,
   });
   return { ok: true, expiresIn: CODE_TTL / 1000, resendIn: CODE_RESEND / 1000 };
 }
@@ -254,7 +271,7 @@ function createAccount(ctx, req, { email = null, phone = null, password = null, 
   if (regionBlocked(db, { phone, region }, 'signup')) fail(403, 'region_blocked', REGION_BLOCKED_MSG);
   const id = newId('u_');
   const display = (name || (email ? email.split('@')[0] : phone ? `미믹${phone.slice(-4)}` : '미믹 사용자')).slice(0, 30);
-  const lang = /^en/i.test(req?.get?.('accept-language') || '') ? 'en' : 'ko';
+  const lang = wantsEn(req) ? 'en' : 'ko';
   const settings = JSON.stringify({ consentAt: now(), marketingConsent: !!marketing, verifiedEmail: email || undefined }); // 필수 동의 시각·선택(마케팅) 동의 여부
   for (let i = 0; ; i++) {
     try {
@@ -299,7 +316,13 @@ function login(ctx, req, res, user, via) {
       fail(401, 'account_deleted', `탈퇴 신청 후 ${ACCOUNT_DELETE_GRACE_DAYS}일이 지나 계정이 삭제되었습니다`);
     }
     db.prepare("UPDATE users SET status='active', delete_requested_at=NULL WHERE id=?").run(user.id);
-    notify(db, user.id, { kind: 'account', title: '계정 삭제 신청이 취소되었습니다', body: '유예 기간 안에 다시 로그인하셔서 계정과 파일이 그대로 돌아왔습니다.' });
+    notify(db, user.id, {
+      kind: 'account',
+      title: '계정 삭제 신청이 취소되었습니다',
+      body: '유예 기간 안에 다시 로그인하셔서 계정과 파일이 그대로 돌아왔습니다.',
+      titleEn: 'Your account deletion request was canceled',
+      bodyEn: 'You signed in again within the grace period, so your account and files have been restored.',
+    });
     audit(db, { userId: user.id, action: 'auth:delete_cancelled', ip: req.ip });
   }
   if (getSettings(user).dormantNoticeAt) saveSettings(db, user.id, { dormantNoticeAt: null });
@@ -367,11 +390,10 @@ export function detectSharing(ctx, userId) {
   db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
   db.prepare('DELETE FROM auth_activity WHERE user_id=?').run(userId); // 정지가 풀린 뒤 예전 기록으로 다시 정지되지 않게
   const body = `짧은 시간에 서로 다른 ${nets.size}곳의 네트워크에서 로그인이 확인되어 24시간 동안 이용을 멈췄습니다. 본인이 아니라면 정지가 풀린 뒤 비밀번호를 바꿔 주세요.`;
-  notify(db, userId, { kind: 'security', title: '계정 공유가 감지되어 일시 정지되었습니다', body });
-  const u = getUser(db, userId);
+  const bodyEn = `Sign-ins from ${nets.size} different networks were detected within a short time, so your account has been paused for 24 hours. If this wasn't you, change your password once the pause ends.`;
+  notify(db, userId, { kind: 'security', title: '계정 공유가 감지되어 일시 정지되었습니다', body, titleEn: 'Your account was paused because sharing was detected', bodyEn });
   // 정지 중에는 사이트 알림을 볼 수 없으니 이메일, 없으면 SMS 로도 알린다
-  if (u.email) sendMessage(db, cfg, { channel: 'email', to: u.email, subject: '[미믹] 계정 일시 정지 안내', body });
-  else if (u.phone) sendMessage(db, cfg, { channel: 'sms', to: u.phone, body: `[미믹] ${body}` });
+  mailUser(db, cfg, getUser(db, userId), ['계정 일시 정지 안내', body], ['Your account has been paused', bodyEn]);
   audit(db, { userId, action: 'auth:sharing_suspended', detail: { nets: nets.size, until } });
   return true;
 }
@@ -430,9 +452,10 @@ export function runDormant(ctx) {
       else if (t - notice >= DORMANT.graceDays * DAY) purge(ctx, u.id, 'dormant');
     } else if (t - last >= inactiveMs) {
       const body = `12개월 넘게 로그인하거나 연결된 앱을 쓴 기록이 없어 ${DORMANT.graceDays}일 뒤 계정과 파일이 삭제될 예정입니다. 계속 쓰시려면 그 전에 한 번 로그인해 주세요.`;
-      notify(db, u.id, { kind: 'account', title: '휴면 계정 삭제 예정 안내', body, link: '/login' });
-      if (u.email) sendMessage(db, cfg, { channel: 'email', to: u.email, subject: '[미믹] 휴면 계정 삭제 예정 안내', body });
-      else if (u.phone) sendMessage(db, cfg, { channel: 'sms', to: u.phone, body: `[미믹] ${body}` });
+      const titleEn = 'Your inactive account is scheduled for deletion';
+      const bodyEn = `There has been no sign-in or connected-app activity for over 12 months, so your account and files will be deleted in ${DORMANT.graceDays} days. To keep using Mimic, please sign in once before then.`;
+      notify(db, u.id, { kind: 'account', title: '휴면 계정 삭제 예정 안내', body, link: '/login', titleEn, bodyEn });
+      mailUser(db, cfg, u, ['휴면 계정 삭제 예정 안내', body], [titleEn, bodyEn]);
       saveSettings(db, u.id, { dormantNoticeAt: t });
     }
   }
@@ -509,6 +532,7 @@ export function register(app, ctx) {
     useCode(db, cfg, req, { target: email, purpose: 'reset', code: b.code });
     db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(hashPassword(b.password), u.id);
     db.prepare('DELETE FROM sessions WHERE user_id=?').run(u.id); // 다른 기기의 로그인도 모두 끊는다
+    db.prepare('DELETE FROM push_subscriptions WHERE user_id=?').run(u.id); // 끊긴 기기로 알림이 계속 가지 않게
     clearFails(db, `email:${email}`);
     audit(db, { userId: u.id, action: 'auth:password_reset', ip: req.ip });
     res.json({ ok: true });
@@ -756,9 +780,10 @@ export function register(app, ctx) {
     // G-04·K-05: 다른 키 발급(개인 토큰·MCP·WebDAV)과 같게 이메일(없으면 SMS)과 사이트 알림으로 알린다
     const u = getUser(db, d.user_id);
     const body = `미믹 계정에 새 앱 "${d.client_name}"이(가) 연결되었습니다. 직접 연결한 것이 아니라면 설정 > 액세스 및 통합에서 즉시 폐기하고 비밀번호를 바꿔 주세요.`;
-    if (u.email) sendMessage(db, cfg, { channel: 'email', to: u.email, subject: '[미믹] 새 앱이 연결되었습니다', body });
-    else if (u.phone) sendMessage(db, cfg, { channel: 'sms', to: u.phone, body: `[미믹] ${body}` });
-    notify(db, u.id, { kind: 'token', title: '새 앱이 연결되었습니다', body, link: '/drive/settings/integrations' });
+    const titleEn = 'A new app was connected';
+    const bodyEn = `A new app "${d.client_name}" was connected to your Mimic account. If you didn't connect it, revoke it right away in Settings > Access & integrations and change your password.`;
+    mailUser(db, cfg, u, ['새 앱이 연결되었습니다', body], [titleEn, bodyEn]);
+    notify(db, u.id, { kind: 'token', title: '새 앱이 연결되었습니다', body, link: '/drive/settings/integrations', titleEn, bodyEn });
     audit(db, { userId: u.id, action: 'token.create', detail: { id, appId: d.app_id, scopes }, ip: req.ip });
     res.json({ token, tokenId: id, tokenType: 'Bearer', scopes, user: publicUser(u) });
   });
@@ -842,7 +867,13 @@ export function register(app, ctx) {
     useCode(db, cfg, req, { target: phone, purpose: 'bind', code: req.body?.code });
     // 현지 번호를 연결하면 지역 판정도 보정한다. 미인증 계정은 인증 완료
     db.prepare("UPDATE users SET phone=?, region=?, status=CASE WHEN status='unverified' THEN 'active' ELSE status END WHERE id=?").run(phone, regionOf(req, phone, cfg).region, u.id);
-    if (u.phone) sendMessage(db, cfg, { channel: 'sms', to: u.phone, body: '[미믹] 계정에 연결된 휴대폰 번호가 바뀌었습니다. 직접 바꾸지 않았다면 바로 고객지원으로 알려 주세요.' });
+    if (u.phone) {
+      const body =
+        u.lang === 'en'
+          ? "[Mimic] The phone number linked to your account was changed. If you didn't change it, please contact support right away."
+          : '[미믹] 계정에 연결된 휴대폰 번호가 바뀌었습니다. 직접 바꾸지 않았다면 바로 고객지원으로 알려 주세요.';
+      sendMessage(db, cfg, { channel: 'sms', to: u.phone, body });
+    }
     audit(db, { userId: u.id, action: u.phone ? 'auth:phone_changed' : 'auth:phone_bound', ip: req.ip });
     res.json({ user: publicUser(getUser(db, u.id)) });
   });
@@ -857,8 +888,11 @@ export function register(app, ctx) {
     db.prepare("UPDATE users SET email=?, status=CASE WHEN status='unverified' THEN 'active' ELSE status END WHERE id=?").run(email, u.id);
     saveSettings(db, u.id, { verifiedEmail: email }); // 코드로 확인한 주소 → 소셜 자동 연결 기준
     if (u.email) {
-      const body = '미믹 계정에 연결된 이메일 주소가 바뀌어 이 주소로는 더 이상 로그인할 수 없습니다. 직접 바꾸지 않았다면 바로 고객지원으로 알려 주세요.';
-      sendMessage(db, cfg, { channel: 'email', to: u.email, subject: '[미믹] 이메일 변경 안내', body });
+      const en = u.lang === 'en';
+      const body = en
+        ? "The email address linked to your Mimic account was changed, so you can no longer sign in with this address. If you didn't change it, please contact support right away."
+        : '미믹 계정에 연결된 이메일 주소가 바뀌어 이 주소로는 더 이상 로그인할 수 없습니다. 직접 바꾸지 않았다면 바로 고객지원으로 알려 주세요.';
+      sendMessage(db, cfg, { channel: 'email', to: u.email, subject: en ? '[Mimic] Your email address was changed' : '[미믹] 이메일 변경 안내', body });
     }
     audit(db, { userId: u.id, action: u.email ? 'auth:email_changed' : 'auth:email_bound', ip: req.ip });
     res.json({ user: publicUser(getUser(db, u.id)) });
@@ -896,8 +930,8 @@ export function register(app, ctx) {
     db.prepare("UPDATE users SET status='pending_delete', delete_requested_at=? WHERE id=?").run(now(), u.id);
     db.prepare('DELETE FROM sessions WHERE user_id=?').run(u.id);
     const body = `계정 삭제 신청이 접수되었습니다. ${ACCOUNT_DELETE_GRACE_DAYS}일 안에 다시 로그인하면 계정이 그대로 돌아오고, 그 뒤에는 모든 파일과 기록이 지워집니다.`;
-    if (u.email) sendMessage(db, cfg, { channel: 'email', to: u.email, subject: '[미믹] 계정 삭제 신청 안내', body });
-    else if (u.phone) sendMessage(db, cfg, { channel: 'sms', to: u.phone, body: `[미믹] ${body}` });
+    const bodyEn = `We received your account deletion request. If you sign in again within ${ACCOUNT_DELETE_GRACE_DAYS} days, your account will be restored as it was; after that, all files and records will be erased.`;
+    mailUser(db, cfg, u, ['계정 삭제 신청 안내', body], ['Account deletion requested', bodyEn]);
     audit(db, { userId: u.id, action: 'auth:delete_requested', ip: req.ip });
     res.clearCookie(COOKIE, { path: '/' });
     res.json({ ok: true, deleteAt: now() + ACCOUNT_DELETE_GRACE_DAYS * DAY });

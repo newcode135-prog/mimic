@@ -6,27 +6,45 @@ const KIND_ICON = { telegram: 'send', invite: 'gift', checkin: 'gift', expiry: '
 
 // 이 기기에서 앱 푸시 받기(K-05): 권한 → pushManager.subscribe → 서버에 구독 저장. 쓸 수 없으면 이유를 보여 준다
 const b64 = (s) => Uint8Array.from(atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+// 구독을 지금 계정으로 서버에 저장한다(같은 endpoint 는 서버가 이 계정으로 옮긴다).
+// 서버 키가 바뀐 구독은 푸시 서비스가 모두 거절하므로 지우고 새 키로 만든다(다른 키로 subscribe 하면 브라우저도 거절)
+async function saveSub(reg, key) {
+  let sub = await reg.pushManager.getSubscription();
+  const old = sub?.options?.applicationServerKey;
+  if (old && String(new Uint8Array(old)) !== String(key)) {
+    await sub.unsubscribe();
+    sub = null;
+  }
+  sub ||= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+  await api('/api/notifications/push-subscriptions', { method: 'POST', body: sub.toJSON() });
+  return sub;
+}
 function pushToggle() {
   const box = h('input', { type: 'checkbox', disabled: true });
   const note = h('span', { class: 'muted small' });
   const wrap = h('label', { class: 'check' }, box, t('이 기기에서 푸시 받기', 'Push notifications on this device'), ' ', note);
   const off = (why) => ((box.disabled = true), (note.textContent = why));
+  const denied = () => Notification.permission === 'denied';
+  const blockedNote = () => t('브라우저 설정에서 이 사이트의 알림이 차단되어 있어요', 'Notifications are blocked for this site in your browser');
   (async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return off(t('이 브라우저는 푸시를 지원하지 않아요', 'This browser does not support push'));
     const reg = await navigator.serviceWorker.getRegistration();
     if (!reg) return off(t('서비스 워커가 꺼져 있어 푸시를 쓸 수 없어요(개발 주소에서는 기본으로 꺼짐)', 'Push needs the service worker, which is off here (disabled by default on dev hosts)'));
     const { publicKey } = await api('/api/notifications/push/key');
     if (!publicKey) return off(t('서버에 푸시 키(VAPID)가 아직 설정되지 않았어요', 'Push keys (VAPID) are not configured on the server yet'));
-    if (Notification.permission === 'denied') return off(t('브라우저 설정에서 이 사이트의 알림이 차단되어 있어요', 'Notifications are blocked for this site in your browser'));
-    box.checked = !!(await reg.pushManager.getSubscription());
+    if (denied()) return off(blockedNote());
+    const key = b64(publicKey);
+    let sub = await reg.pushManager.getSubscription();
+    // 이 브라우저에 켜 둔 구독은 열 때마다 다시 저장한다: 다른 계정이 켰던 구독을 지금 계정으로 옮기고, 서버 키가 바뀌었으면 새로 만든다
+    if (sub && Notification.permission === 'granted') sub = await saveSub(reg, key).catch(() => reg.pushManager.getSubscription());
+    box.checked = !!sub;
     box.disabled = false;
     box.onchange = async () => {
       box.disabled = true;
       try {
         if (box.checked) {
           if ((await Notification.requestPermission()) !== 'granted') throw new Error(t('알림 권한을 허용해야 해요', 'Allow notifications to turn this on'));
-          const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(publicKey) });
-          await api('/api/notifications/push-subscriptions', { method: 'POST', body: sub.toJSON() });
+          await saveSub(reg, key);
         } else {
           const sub = await reg.pushManager.getSubscription();
           if (sub) {
@@ -36,9 +54,10 @@ function pushToggle() {
         }
       } catch (e) {
         box.checked = !box.checked;
-        toastError(e);
+        if (denied()) note.textContent = blockedNote();
+        else toastError(e);
       } finally {
-        box.disabled = false;
+        box.disabled = denied();
       }
     };
   })().catch(() => off(t('푸시 상태를 확인하지 못했어요', 'Could not check push status')));

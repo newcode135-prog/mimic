@@ -82,9 +82,13 @@ export const userSession = [requireUser, sessionOnly];
 // 새 키가 생기면 이메일(없으면 SMS)과 사이트 알림으로 알린다(G-04, K-05)
 export function alertNewKey(ctx, user, label) {
   const body = `미믹 계정에 새 접근 키 "${label}"이(가) 만들어졌습니다. 직접 만든 것이 아니라면 설정 > 액세스 및 통합에서 즉시 폐기하고 비밀번호를 바꿔 주세요.`;
-  if (user.email) sendMessage(ctx.db, ctx.cfg, { channel: 'email', to: user.email, subject: '[미믹] 새 접근 키가 만들어졌습니다', body });
-  else if (user.phone) sendMessage(ctx.db, ctx.cfg, { channel: 'sms', to: user.phone, body });
-  notify(ctx.db, user.id, { kind: 'token', title: '새 접근 키가 만들어졌습니다', body, link: '/drive/settings/integrations' });
+  const titleEn = 'A new access key was created';
+  const bodyEn = `A new access key "${label}" was created for your Mimic account. If you didn't create it, revoke it right away in Settings > Access & integrations and change your password.`;
+  // K-03: 계정 언어가 영어면 이메일·SMS 도 영어로
+  const en = user.lang === 'en';
+  if (user.email) sendMessage(ctx.db, ctx.cfg, { channel: 'email', to: user.email, subject: en ? `[Mimic] ${titleEn}` : '[미믹] 새 접근 키가 만들어졌습니다', body: en ? bodyEn : body });
+  else if (user.phone) sendMessage(ctx.db, ctx.cfg, { channel: 'sms', to: user.phone, body: en ? bodyEn : body });
+  notify(ctx.db, user.id, { kind: 'token', title: '새 접근 키가 만들어졌습니다', body, link: '/drive/settings/integrations', titleEn, bodyEn });
 }
 
 // prefix: mp_ 가 아닌 비밀값(예: WebDAV 의 mw_)은 공통 인증이 Bearer 로 받지 않아 그 앱 경로에서만 쓸 수 있다

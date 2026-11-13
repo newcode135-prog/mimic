@@ -96,6 +96,7 @@ const shareApi = (db, s) => ({
   saveCount: s.save_count,
   createdAt: s.created_at,
   status: statusOf(s),
+  blocked: json(s.file_ids, []).some((id) => blockedIn(db, s.user_id, id)), // 신고 처리로 공유 안 파일이 차단됨(J-01): 공유한 사람 화면에 이의제기 안내
 });
 const pubNode = (n) => ({ id: n.id, kind: n.kind, name: n.name, size: n.size, mime: n.mime, updatedAt: n.updated_at });
 const sorted = (rows) => rows.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'folder' ? -1 : 1));
@@ -142,8 +143,9 @@ function scopeOf(db, s, nodeId) {
 const inScope = (db, s, id) => scopeOf(db, s, String(id)) || fail(404, 'not_found', '공유된 파일을 찾을 수 없습니다');
 const rootsOf = (db, s) => json(s.file_ids, []).map((id) => getNode(db, s.user_id, id)).filter((n) => n && n.space === 'drive' && !n.trashed_at);
 
-// 휴지통을 뺀 하위 트리 질의
-const TREE = 'WITH RECURSIVE t(id) AS (SELECT ? UNION ALL SELECT f.id FROM files f JOIN t ON f.parent_id = t.id WHERE f.user_id = ? AND f.trashed_at IS NULL)';
+// 휴지통을 뺀 하위 트리 질의. CROSS JOIN 으로 t 를 바깥 고리에 두고 space 까지 걸어 files_parent(user_id, space, parent_id) 색인을 다 쓴다
+// (안 그러면 단계마다 사용자 파일 전체를 훑어 1만 개 폴더에 십수 초). 공유는 drive 만 다루고 하위 항목은 부모와 같은 space 라 결과는 같다
+const TREE = "WITH RECURSIVE t(id) AS (SELECT ? UNION ALL SELECT f.id FROM t CROSS JOIN files f ON f.parent_id = t.id WHERE f.user_id = ? AND f.space = 'drive' AND f.trashed_at IS NULL)";
 const liveSize = (db, uid, id) =>
   Number(db.prepare(`${TREE} SELECT COALESCE(SUM(size),0) AS n FROM files WHERE user_id=? AND kind='file' AND trashed_at IS NULL AND id IN t`).get(id, uid, uid).n);
 const blockedIn = (db, uid, id) =>

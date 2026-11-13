@@ -1,12 +1,12 @@
 // 블로그(K-02): /blog 목록, /blog/:slug 글
 import { api, h, t } from '/ui.js';
-import { setup, docBody, koOnly } from '/pages/help.js';
+import { setup, docBody } from '/pages/help.js';
 
 export async function render(root, ctx) {
   if (setup(ctx)) return;
   if (ctx.params.slug) {
     const { post } = await api(`/api/content/blog/${encodeURIComponent(ctx.params.slug)}`);
-    document.title = `${t(post.title, post.en)} — ${t('미믹 블로그', 'Mimic blog')}`;
+    document.title = `${post.title} — ${t('미믹 블로그', 'Mimic blog')}`;
     root.replaceChildren(
       h(
         'div',
@@ -16,8 +16,7 @@ export async function render(root, ctx) {
           'article',
           { class: 'mc-article' },
           h('div', { class: 'row', style: { marginBottom: '10px' } }, ...post.tags.map((x) => h('span', { class: 'badge brand' }, x)), h('span', { class: 'muted small' }, post.date)),
-          h('h1', {}, t(post.title, post.en)),
-          koOnly(),
+          h('h1', {}, post.title),
           h('p', { class: 'mc-lead', style: { marginBottom: '22px' } }, post.summary),
           docBody(post.body),
         ),
@@ -29,7 +28,7 @@ export async function render(root, ctx) {
   document.title = t('블로그 — 미믹', 'Blog — Mimic');
   const { posts } = await api('/api/content/blog');
   root.replaceChildren(
-    h('div', { class: 'mc-page-title' }, h('span', { class: 'mc-eyebrow' }, 'Blog'), h('h1', {}, t('미믹 블로그', 'Mimic blog')), h('p', { class: 'mc-lead', style: { margin: '0 auto' } }, t('새 소식과 활용법을 전해요.', 'News and how-tos.')), koOnly()),
+    h('div', { class: 'mc-page-title' }, h('span', { class: 'mc-eyebrow' }, 'Blog'), h('h1', {}, t('미믹 블로그', 'Mimic blog')), h('p', { class: 'mc-lead', style: { margin: '0 auto' } }, t('새 소식과 활용법을 전해요.', 'News and how-tos.'))),
     h(
       'div',
       { class: 'container' },
@@ -41,7 +40,7 @@ export async function render(root, ctx) {
             'a',
             { class: 'mc-tile', href: `/blog/${p.slug}` },
             h('div', { class: 'row' }, ...p.tags.map((x) => h('span', { class: 'badge brand' }, x)), h('span', { class: 'muted small' }, p.date)),
-            h('h3', {}, t(p.title, p.en)),
+            h('h3', {}, p.title),
             h('p', {}, p.summary),
             h('span', { class: 'small', style: { color: 'var(--brand-strong)', fontWeight: 600 } }, t('읽어 보기 →', 'Read →')),
           ),

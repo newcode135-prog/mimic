@@ -224,7 +224,7 @@ function createTasks(ctx, req, items, parentId) {
 function guard(ctx, req) {
   if (!rateLimit(`offline:${req.user.id}`, 60, 60_000)) fail(429, 'rate_limited', '요청이 너무 많습니다. 잠시 뒤 다시 시도하세요');
   // K-04: 관리자가 다운로드를 막은 국가의 사용자는 클라우드 다운로드를 만들 수 없다
-  if (ctx.modules.auth?.regionBlocked?.(ctx.db, req.user, 'download')) fail(403, 'region_blocked', '현재 지역에서는 클라우드 다운로드를 사용할 수 없습니다');
+  if (ctx.modules.auth?.regionBlocked?.(ctx.db, req.user, 'download', req)) fail(403, 'region_blocked', '현재 지역에서는 클라우드 다운로드를 사용할 수 없습니다');
 }
 
 function readTorrentUpload(req) {
@@ -450,17 +450,23 @@ export function register(app, ctx) {
         for (const t of lifted) requeueLifted(t);
       }
       const held = db.prepare('SELECT status FROM offline_tasks WHERE id=?').get(a.task_id)?.status === 'error'; // 횟수·용량이 모자라 시작하지 못함
+      const [body, bodyEn] =
+        action !== 'unblock'
+          ? ['검토 결과 차단을 유지합니다.', 'After review, the block stays in place.']
+          : partial
+            ? ['차단이 풀렸습니다. 같은 링크로 다시 받으면 빠졌던 파일도 저장됩니다.', 'The block was lifted. Download the same link again to also save the files that were left out.']
+            : held
+              ? [
+                  '차단이 풀렸지만 남은 무료 횟수나 저장 공간이 모자라 시작하지 못했습니다. 전송 목록에서 다시 시도해 주세요.',
+                  "The block was lifted, but the download couldn't start because you're out of free downloads or storage. Please retry from the transfer list.",
+                ]
+              : ['차단이 풀려 클라우드 다운로드를 다시 진행합니다.', 'The block was lifted and your cloud download will continue.'];
       notify(db, a.user_id, {
         kind: 'offline_appeal',
         title: action === 'unblock' ? '이의제기가 받아들여졌습니다' : '이의제기가 반려되었습니다',
-        body:
-          action !== 'unblock'
-            ? '검토 결과 차단을 유지합니다.'
-            : partial
-              ? '차단이 풀렸습니다. 같은 링크로 다시 받으면 빠졌던 파일도 저장됩니다.'
-              : held
-                ? '차단이 풀렸지만 남은 무료 횟수나 저장 공간이 모자라 시작하지 못했습니다. 전송 목록에서 다시 시도해 주세요.'
-                : '차단이 풀려 클라우드 다운로드를 다시 진행합니다.',
+        titleEn: action === 'unblock' ? 'Your appeal was accepted' : 'Your appeal was rejected',
+        body,
+        bodyEn,
         link: '/drive/all',
       });
       audit(db, { userId: req.user.id, action: `offline.appeal.${action}`, detail: { appealId: a.id, taskId: a.task_id, blockId: a.block_id }, ip: req.ip });

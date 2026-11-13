@@ -1,12 +1,18 @@
 // 공개 콘텐츠(도움말·FAQ·블로그·정책), 문의, 신고·저작권 신고, 투명성 통계, 사이트 내 알림(K-01·K-02·K-05·J-01~J-04)
 import { requireScope } from '../../core/auth.js';
 import { now, newId, fail, rateLimit, periodKeys, DAY } from '../../core/util.js';
-import { sendMessage } from '../../core/notify.js';
+import crypto from 'node:crypto';
+import { sendMessage, pushEndpointOk } from '../../core/notify.js';
+import { vapidKeys } from '../../core/config.js';
 import { N } from './data/numbers.js';
 import { CATEGORIES, ARTICLES } from './data/help.js';
 import { FAQ } from './data/faq.js';
 import { POSTS } from './data/blog.js';
 import { POLICIES } from './data/policies.js';
+import { CATEGORY_DESC_EN, ARTICLES_EN } from './data/help.en.js';
+import { FAQ_EN } from './data/faq.en.js';
+import { POSTS_EN } from './data/blog.en.js';
+import { POLICIES_EN } from './data/policies.en.js';
 import { localOwners } from './locate.js';
 
 // 신고는 신고자가 탈퇴해도 통계(J-03)에 남아야 하므로 SET NULL
@@ -100,34 +106,54 @@ const articleBrief = (a) => ({ slug: a.slug, title: a.title, category: a.categor
 const policyBrief = (p) => ({ slug: p.slug, title: p.title, en: p.en, draft: p.draft, updated: p.updated });
 const postBrief = ({ body, ...p }) => p;
 
+// K-03: 화면 언어(x-mimic-lang 헤더) → ?lang → 계정 언어 → 한국어
+const langOf = (req) => [req.get('x-mimic-lang'), req.query.lang, req.user?.lang].find((l) => l === 'ko' || l === 'en') || 'ko';
+// 언어별 콘텐츠. 영어가 없는 글·항목은 한국어 그대로(키와 모양은 같다)
+const CONTENT = {
+  ko: { categories: CATEGORIES, articles: ARTICLES, faq: FAQ, posts: POSTS, policies: POLICIES },
+  en: {
+    categories: CATEGORIES.map((c) => ({ ...c, title: c.en, desc: CATEGORY_DESC_EN[c.id] ?? c.desc })),
+    articles: ARTICLES.map((a) => ({ ...a, ...ARTICLES_EN[a.slug] })),
+    faq: FAQ.map((f) => ({ ...f, ...FAQ_EN[f.id] })),
+    posts: POSTS.map((p) => ({ ...p, ...POSTS_EN[p.slug] })),
+    policies: POLICIES.map((p) => {
+      const e = POLICIES_EN[p.slug];
+      return e ? { ...p, title: e.title, sections: p.sections.map((s) => ({ ...s, ...e.sections[s.id] })) } : p;
+    }),
+  },
+};
+
 export function register(app, ctx) {
   const { db, cfg } = ctx;
 
   // ---------- 도움말·FAQ·블로그·정책(공개) ----------
   app.get('/api/content/help', (req, res) => {
+    const { categories: cats, articles } = CONTENT[langOf(req)];
     const q = String(req.query.q || '').trim().toLowerCase().slice(0, 100);
-    const categories = CATEGORIES.map((c) => ({ ...c, articles: ARTICLES.filter((a) => a.category === c.id).map(articleBrief) }));
-    const results = q ? ARTICLES.filter((a) => (a.title + '\n' + a.body).toLowerCase().includes(q)).map(articleBrief) : undefined;
+    const categories = cats.map((c) => ({ ...c, articles: articles.filter((a) => a.category === c.id).map(articleBrief) }));
+    const results = q ? articles.filter((a) => (a.title + '\n' + a.body).toLowerCase().includes(q)).map(articleBrief) : undefined;
     res.json({ categories, results });
   });
   app.get('/api/content/help/:slug', (req, res) => {
-    const article = ARTICLES.find((a) => a.slug === req.params.slug) || fail(404, 'not_found', '도움말을 찾을 수 없습니다');
-    const category = CATEGORIES.find((c) => c.id === article.category);
-    const related = ARTICLES.filter((a) => a.category === article.category && a.slug !== article.slug).map(articleBrief);
+    const { categories, articles } = CONTENT[langOf(req)];
+    const article = articles.find((a) => a.slug === req.params.slug) || fail(404, 'not_found', '도움말을 찾을 수 없습니다');
+    const category = categories.find((c) => c.id === article.category);
+    const related = articles.filter((a) => a.category === article.category && a.slug !== article.slug).map(articleBrief);
     res.json({ article, category, related });
   });
-  app.get('/api/content/faq', (_req, res) => res.json({ items: FAQ }));
+  app.get('/api/content/faq', (req, res) => res.json({ items: CONTENT[langOf(req)].faq }));
   app.get('/api/content/support', (_req, res) => res.json({ email: supportEmail(cfg) }));
   app.get('/api/content/numbers', (_req, res) => res.json(N)); // 소개 화면 수치(plans.js 값)
-  app.get('/api/content/blog', (_req, res) => res.json({ posts: POSTS.map(postBrief) }));
+  app.get('/api/content/blog', (req, res) => res.json({ posts: CONTENT[langOf(req)].posts.map(postBrief) }));
   app.get('/api/content/blog/:slug', (req, res) => {
-    const post = POSTS.find((p) => p.slug === req.params.slug) || fail(404, 'not_found', '글을 찾을 수 없습니다');
+    const post = CONTENT[langOf(req)].posts.find((p) => p.slug === req.params.slug) || fail(404, 'not_found', '글을 찾을 수 없습니다');
     res.json({ post });
   });
-  app.get('/api/content/policies', (_req, res) => res.json({ policies: POLICIES.map(policyBrief) }));
+  app.get('/api/content/policies', (req, res) => res.json({ policies: CONTENT[langOf(req)].policies.map(policyBrief) }));
   app.get('/api/content/policies/:slug', (req, res) => {
-    const policy = POLICIES.find((p) => p.slug === req.params.slug) || fail(404, 'not_found', '정책 문서를 찾을 수 없습니다');
-    res.json({ policy, policies: POLICIES.map(policyBrief) });
+    const { policies } = CONTENT[langOf(req)];
+    const policy = policies.find((p) => p.slug === req.params.slug) || fail(404, 'not_found', '정책 문서를 찾을 수 없습니다');
+    res.json({ policy, policies: policies.map(policyBrief) });
   });
 
   // ---------- 문의(K-01) ----------
@@ -156,7 +182,10 @@ export function register(app, ctx) {
       subject: `[문의:${m.category}] ${m.name} <${m.email}>`,
       body: `${m.message}\n\n접수번호 ${id}${req.user ? ` · 회원 ${req.user.id}` : ''}`,
     });
-    sendMessage(db, cfg, { channel: 'email', to: m.email, subject: '[미믹] 문의가 접수되었습니다', body: `접수번호 ${id}. 영업일 기준 2일 안에 답변드릴게요.` });
+    const en = langOf(req) === 'en'; // 접수 확인 메일은 신청한 화면의 언어로
+    sendMessage(db, cfg, en
+      ? { channel: 'email', to: m.email, subject: '[Mimic] We received your inquiry', body: `Reference number ${id}. We'll reply within 2 business days.` }
+      : { channel: 'email', to: m.email, subject: '[미믹] 문의가 접수되었습니다', body: `접수번호 ${id}. 영업일 기준 2일 안에 답변드릴게요.` });
     res.status(201).json({ id });
   });
 
@@ -226,7 +255,9 @@ ${N.counterWaitDays}일 안에 소송 등 법적 조치를 했다는 사실을 $
       'INSERT INTO content_reports (id, kind, reporter_id, reporter_email, target_type, target, reason, detail, meta, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
     ).run(id, 'copyright', req.user?.id ?? null, mail, 'url', urls.join('\n'), 'copyright', work, JSON.stringify({ claimant, work, urls, statement: true, agent: !!b.agent, owners: localOwners(db, urls) }), now());
     sendMessage(db, cfg, { channel: 'email', to: supportEmail(cfg), subject: `[저작권 신고] ${claimant}`, body: `${work}\n${urls.join('\n')}\n접수번호 ${id}` });
-    sendMessage(db, cfg, { channel: 'email', to: mail, subject: '[미믹] 저작권 신고가 접수되었습니다', body: `접수번호 ${id}. 검토가 끝나면 결과를 이 주소로 알려 드릴게요.` });
+    sendMessage(db, cfg, langOf(req) === 'en'
+      ? { channel: 'email', to: mail, subject: '[Mimic] We received your copyright notice', body: `Reference number ${id}. We'll email the result to this address once our review is done.` }
+      : { channel: 'email', to: mail, subject: '[미믹] 저작권 신고가 접수되었습니다', body: `접수번호 ${id}. 검토가 끝나면 결과를 이 주소로 알려 드릴게요.` });
     res.status(201).json({ id, status: 'open' });
   });
 
@@ -275,8 +306,8 @@ ${N.counterWaitDays}일 안에 소송 등 법적 조치를 했다는 사실을 $
     const size = intIn(req.query.limit, 1, 100, 20);
     const page = intIn(req.query.page, 1, 1e6, 1);
     const uid = req.user.id;
-    // 영어 사용자는 영어 제목·본문이 있으면 그것을(없으면 한국어) 받는다(K-03)
-    const en = req.user.lang === 'en';
+    // 영어 화면(없으면 영어 계정)은 영어 제목·본문이 있으면 그것을(없으면 한국어) 받는다(K-03)
+    const en = langOf(req) === 'en';
     const items = db
       .prepare(
         `SELECT id, kind, ${en ? 'COALESCE(title_en, title)' : 'title'} AS title, ${en ? "COALESCE(NULLIF(body_en, ''), body)" : 'body'} AS body, link, read_at AS readAt, created_at AS createdAt
@@ -303,23 +334,29 @@ ${N.counterWaitDays}일 안에 소송 등 법적 조치를 했다는 사실을 $
   });
 
   // ---------- 앱 푸시 구독(K-05): 브라우저 Push API 구독을 저장하면 notify() 가 push 도 보낸다 ----------
-  // VAPID 공개키가 없으면(설정 전) 화면이 이유를 안내한다
-  app.get('/api/notifications/push/key', requireUser, (_req, res) => res.json({ publicKey: cfg.vapidPublicKey || process.env.MIMIC_VAPID_PUBLIC_KEY || null }));
+  // VAPID 공개키(환경변수, 없으면 서버가 만든 키)
+  app.get('/api/notifications/push/key', requireUser, (_req, res) => res.json({ publicKey: vapidKeys(cfg).publicKey }));
   const B64URL = /^[A-Za-z0-9_-]+=*$/;
+  // 운영 모드는 https 공개 주소만, 개발·테스트는 http://localhost 도(pushEndpointOk)
   const endpointOf = (v) => {
     const e = typeof v === 'string' ? v.trim() : '';
-    let ok = false;
-    try {
-      ok = e.length <= 1000 && new URL(e).protocol === 'https:';
-    } catch {}
-    return ok ? e : fail(400, 'invalid_endpoint', '푸시 주소(https)를 확인해 주세요');
+    return e.length <= 1000 && pushEndpointOk(cfg, e) ? e : fail(400, 'invalid_endpoint', '푸시 주소(https)를 확인해 주세요');
   };
   app.post('/api/notifications/push-subscriptions', requireUser, (req, res) => {
     const b = req.body || {};
     const endpoint = endpointOf(b.endpoint);
     const { p256dh, auth } = b.keys || {};
-    const okKey = (k, lo, hi) => typeof k === 'string' && k.length >= lo && k.length <= hi && B64URL.test(k);
-    if (!okKey(p256dh, 80, 100) || !okKey(auth, 16, 32)) fail(400, 'invalid_keys', '푸시 키(p256dh·auth)를 확인해 주세요');
+    // p256dh 는 P-256 곡선 위의 비압축 공개키(65바이트, 0x04 로 시작), auth 는 16바이트. 곡선 밖의 점이면 보낼 때마다 암호화가 실패한다
+    const bytes = (k) => (typeof k === 'string' && k.length <= 100 && B64URL.test(k) ? Buffer.from(k, 'base64url') : Buffer.alloc(0));
+    const onCurve = (pk) => {
+      try {
+        return !!crypto.ECDH.convertKey(pk, 'prime256v1');
+      } catch {
+        return false;
+      }
+    };
+    const pk = bytes(p256dh);
+    if (pk.length !== 65 || pk[0] !== 4 || !onCurve(pk) || bytes(auth).length !== 16) fail(400, 'invalid_keys', '푸시 키(p256dh·auth)를 확인해 주세요');
     limit(req, 'push-sub', 60);
     // 같은 기기(endpoint)에 다른 계정으로 다시 켜면 그 계정으로 옮긴다. 한 사람당 최근 20대까지
     db.prepare(

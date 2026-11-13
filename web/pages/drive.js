@@ -257,7 +257,10 @@ export async function render(root, ctx) {
         h('p', { class: 'small muted' }, t('컴퓨터에 설치된 플레이어를 고르세요. 목록에 없으면 주소를 복사해 플레이어의 "네트워크 주소 열기"에 붙여 넣으세요. 주소는 잠시 뒤 만료돼요.', 'Pick a player installed on this computer, or copy the address into "Open network stream" in your player. It expires soon.')),
         link('PotPlayer', r.potplayer),
         link('VLC', r.vlc),
-        link(t('미믹 데스크톱 앱', 'Mimic desktop app'), r.mimic),
+        // 플레이어 화면(player.js)과 같은 기준: 브라우저가 바로 재생하는 형식만 데스크톱 앱 버튼을 보인다
+        r.mimicPlayable
+          ? link(t('미믹 데스크톱 앱', 'Mimic desktop app'), r.mimic)
+          : h('p', { class: 'small muted' }, t('미믹 데스크톱 앱은 브라우저가 바로 재생하는 형식(mp4·webm·mp3 등)만 열 수 있어요. 이 파일은 PotPlayer·VLC 로 여세요.', 'The Mimic desktop app only plays browser formats (mp4, webm, mp3, etc.). Use PotPlayer or VLC for this file.')),
         h('input', { class: 'input', readonly: true, value: url, onfocus: (e) => e.target.select() }),
       ),
       actions: [{ label: t('닫기', 'Close') }, { label: t('주소 복사', 'Copy address'), kind: 'primary', onClick: () => (copyText(url), false) }],

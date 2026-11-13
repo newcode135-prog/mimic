@@ -1,7 +1,7 @@
 // 미믹 데스크톱 앱(K-09, Windows·macOS).
 // 미믹 서버 화면을 창으로 열고, 트레이 메뉴·mimic:// 링크·magnet: 링크를 처리한다.
 // Windows 7·8 용 구버전 빌드(Electron 22)에서도 돌도록 CommonJS·Node 16 문법만 쓴다.
-const { app, BrowserWindow, Menu, Tray, nativeImage, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, shell, dialog, net } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -64,14 +64,28 @@ function route(url) {
   if (EXTERNAL.includes(u.protocol)) shell.openExternal(url);
 }
 
-// mimic://play?url=<재생 링크> → 앱 안 재생 창. 연결된 미믹 서버의 링크만 연다(다른 사이트가 임의 페이지를 띄우지 못하게)
+// mimic://play?id=<파일 id>&url=<재생 링크> → 앱 안 재생 창. 연결된 미믹 서버의 링크만 연다(다른 사이트가 임의 페이지를 띄우지 못하게).
+// id 가 있고 이 앱에 로그인한 계정이 그 파일을 열 수 있으면 미믹 플레이어(/play/<id>)로 열어 서버 변환을 쓴다.
+// 예전 링크(id 없음)·로그인 전·브라우저와 다른 계정이면 브라우저 사용자에게 만든 서명 재생 링크를 그대로 연다
 function openMimic(u) {
   if (u.hostname !== 'play') return showMain();
-  const target = u.searchParams.get('url') || '';
-  if (!sameServer(target)) {
-    dialog.showErrorBox('미믹', `연결된 미믹 서버(${server})의 재생 링크만 열 수 있어요.\n${target}`);
+  const url = u.searchParams.get('url') || '';
+  if (!sameServer(url)) {
+    dialog.showErrorBox('미믹', `연결된 미믹 서버(${server})의 재생 링크만 열 수 있어요.\n${url}`);
     return;
   }
+  const id = u.searchParams.get('id') || '';
+  if (!/^[\w-]{1,64}$/.test(id)) return openPlayer(url);
+  const req = net.request({ url: `${server}/api/media/${id}/info`, useSessionCookies: true });
+  req.on('response', (res) => {
+    res.on('data', () => {});
+    openPlayer(res.statusCode === 200 ? `${server}/play/${id}` : url);
+  });
+  req.on('error', () => openPlayer(url));
+  req.end();
+}
+
+function openPlayer(target) {
   const player = new BrowserWindow({
     width: 1024,
     height: 600,

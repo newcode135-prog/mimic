@@ -1,6 +1,6 @@
 // 서비스 소개(K-02) — 미믹 고유 마케팅 페이지. 일러스트는 아래 SVG 로 직접 그린다.
 import { api, h, icon, t, formatWon } from '/ui.js';
-import { setup, koOnly } from '/pages/help.js';
+import { setup } from '/pages/help.js';
 
 // 링크 한 줄이 구름(클라우드) 안의 파일 카드로 흘러 들어가고, 휴대폰·TV 로 재생되는 그림
 const ART = `
@@ -137,7 +137,7 @@ export async function render(root, ctx) {
   );
 
   const faqList = h('div', { class: 'mc-faq', style: { maxWidth: '760px', margin: '0 auto' } });
-  const faq = section('', head('FAQ', t('자주 묻는 질문', 'Frequently asked')), koOnly(), faqList, h('p', { style: { textAlign: 'center', marginTop: '16px' } }, h('a', { href: '/faq' }, t('질문 모두 보기 →', 'See all questions →'))));
+  const faq = section('', head('FAQ', t('자주 묻는 질문', 'Frequently asked')), faqList, h('p', { style: { textAlign: 'center', marginTop: '16px' } }, h('a', { href: '/faq' }, t('질문 모두 보기 →', 'See all questions →'))));
 
   const legal = section(
     'alt',

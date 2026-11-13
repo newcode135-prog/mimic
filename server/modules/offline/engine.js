@@ -10,7 +10,7 @@ import dns from 'node:dns/promises';
 import { spawn } from 'node:child_process';
 import { Readable } from 'node:stream';
 import parseTorrent from 'parse-torrent'; // webtorrent 의 의존성으로 함께 설치되어 있다
-import { now, json, DAY } from '../../core/util.js';
+import { now, json, DAY, isPrivateIp } from '../../core/util.js';
 import { tx } from '../../core/db.js';
 import { ingestStream, ingestFile, hasBlob } from '../../core/storage.js';
 import { createFolder, createFileNode, getNode, usage, checkCapacity, validName } from '../../core/files.js';
@@ -318,7 +318,7 @@ function finish(ctx, taskId, { name, all, save, cached, cache }) {
     const t = now();
     update(db, taskId, { status: 'done', name: safeName(name), progress: 100, size: bytes, downloaded: bytes, speed: 0, error: null, result_root_id: rootId, file_ids: JSON.stringify(ids), finished_at: t, ...skipped });
     const link = rootIsFolder ? `/drive/folder/${rootId}` : parentId ? `/drive/folder/${parentId}` : '/drive/all';
-    notify(db, user.id, { kind: 'offline', title: '클라우드 다운로드 완료', body: safeName(name), link });
+    notify(db, user.id, { kind: 'offline', title: '클라우드 다운로드 완료', titleEn: 'Cloud download complete', body: safeName(name), link }); // 본문은 파일 이름이라 영어 본문을 따로 두지 않는다
   });
 }
 
@@ -395,13 +395,7 @@ export function pickFiles(files, filter = true) {
 
 // ---------- URL(A-03) ----------
 // 운영 모드에서는 내부망·루프백 주소로의 요청을 막는다(SSRF). 개발·테스트는 로컬 서버를 쓰므로 허용
-const PRIVATE = new net.BlockList();
-for (const [a, p] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16], ['224.0.0.0', 3]]) PRIVATE.addSubnet(a, p, 'ipv4');
-for (const [a, p] of [['::', 127], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]]) PRIVATE.addSubnet(a, p, 'ipv6');
-export function isPrivateIp(ip) {
-  const v4 = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
-  return net.isIPv4(v4) ? PRIVATE.check(v4, 'ipv4') : PRIVATE.check(ip, 'ipv6');
-}
+export { isPrivateIp }; // 판정은 core/util.js(웹 푸시와 같이 씀)
 const allowPrivate = (cfg) => cfg.offlineAllowPrivate ?? cfg.dev;
 const bareHost = (u) => u.hostname.replace(/^\[|\]$/g, '');
 

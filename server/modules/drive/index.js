@@ -38,7 +38,7 @@ export const SORTS = {
   largest: (a, b) => b.size - a.size,
   smallest: (a, b) => a.size - b.size,
 };
-function sortRows(rows, { sort, foldersFirst }) {
+export function sortRows(rows, { sort, foldersFirst }) {
   const cmp = SORTS[sort] || SORTS.name;
   return rows.sort((a, b) => (foldersFirst && a.kind !== b.kind ? (a.kind === 'folder' ? -1 : 1) : 0) || cmp(a, b) || coll.compare(a.name, b.name));
 }
@@ -46,7 +46,7 @@ function sortRows(rows, { sort, foldersFirst }) {
 // 정렬 기억 범위가 'global' 이면 '*' 한 칸, 'folder' 면 폴더(또는 recent·star·search 같은 화면)마다 따로 저장한다.
 // 값이 없으면 'folder'(설정 화면 integrations SETTING_DEFAULTS 와 같은 기본값). 폴더에 저장된 값이 없으면 '*' 값을 쓴다
 const prefKey = (scope, key) => (scope === 'global' ? '*' : key);
-function readPrefs(settings, key) {
+export function readPrefs(settings, key) {
   const sortScope = settings.sortScope === 'global' ? 'global' : 'folder';
   const viewScope = settings.viewScope === 'global' ? 'global' : 'folder';
   const sp = settings.sortPrefs?.[prefKey(sortScope, key)] || settings.sortPrefs?.['*'] || {};

@@ -4,6 +4,11 @@ import { copyText, shareUrl, expiryLabel, expiryPicker, passwordField, viewModeF
 
 const STATUS = { active: ['badge brand', '공유 중', 'Active'], expired: ['badge', '기간 끝남', 'Expired'], revoked: ['badge danger', '취소됨', 'Cancelled'], unavailable: ['badge danger', '열 수 없음', 'Unavailable'] };
 const statusBadge = (st) => h('span', { class: STATUS[st][0] }, t(STATUS[st][1], STATUS[st][2]));
+// 신고 처리로 차단된 공유(J-01): 배지와 이의제기 링크(대상 칸에 이 공유 링크를 채워 연다)
+const blockedNotice = (s) => [
+  h('span', { class: 'badge danger', title: t('신고 처리로 이 공유의 파일이 차단되어 받는 사람이 열거나 저장할 수 없어요', 'Files in this share were blocked after a report, so recipients cannot open or save them') }, t('차단됨', 'Blocked')),
+  h('a', { class: 'small', href: `/copyright?tab=appeal&type=share&target=${encodeURIComponent(shareUrl(s.url))}` }, t('이의제기', 'Appeal')),
+];
 const titleOf = (s) => (s.fileIds?.length > 1 ? `${s.title} ${t(`외 ${s.fileIds.length - 1}개`, `+${s.fileIds.length - 1}`)}` : s.title);
 
 export async function render(root, ctx) {
@@ -73,7 +78,7 @@ export async function render(root, ctx) {
             h(
               'tr',
               {},
-              h('td', {}, h('div', { class: 'row' }, h('a', { href: s.url, class: 'share-name' }, titleOf(s)), s.status !== 'active' ? statusBadge(s.status) : s.liveCount === 0 ? h('span', { class: 'badge danger', title: t('공유한 파일이 모두 휴지통에 있거나 지워져 받는 사람에게 보이는 것이 없어요', 'All shared items are in the trash or deleted, so recipients see nothing') }, t('원본 없음', 'Source gone')) : null, s.code ? h('span', { class: 'badge', title: t('공유 코드', 'Share code') }, s.code) : null)),
+              h('td', {}, h('div', { class: 'row' }, h('a', { href: s.url, class: 'share-name' }, titleOf(s)), s.status !== 'active' ? statusBadge(s.status) : s.blocked ? blockedNotice(s) : s.liveCount === 0 ? h('span', { class: 'badge danger', title: t('공유한 파일이 모두 휴지통에 있거나 지워져 받는 사람에게 보이는 것이 없어요', 'All shared items are in the trash or deleted, so recipients see nothing') }, t('원본 없음', 'Source gone')) : null, s.code ? h('span', { class: 'badge', title: t('공유 코드', 'Share code') }, s.code) : null)),
               h('td', {}, formatDate(s.createdAt, false)),
               h('td', {}, expiryLabel(s.expiresAt)),
               h('td', {}, s.hasPassword ? h('span', { class: 'row', html: `${icon('lock')}<span>${t('있음', 'On')}</span>` }) : t('없음', 'Off')),

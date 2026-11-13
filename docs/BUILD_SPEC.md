@@ -97,7 +97,11 @@ export async function close(ctx) {} // 선택: 테스트 종료 때 자원 정�
 | `POST /api/auth/logout` | auth | 레이아웃 |
 | `GET /api/notifications/unread-count`, `GET /api/notifications`, `POST /api/notifications/read` | admin-content | 레이아웃·알림 화면 |
 | `GET /api/billing/products`, `POST /api/billing/orders`, `POST /api/billing/orders/:id/confirm` | billing | 결제 화면 |
-| `GET /api/admin/billing/orders`, `POST /api/admin/billing/orders/:id/refund`, `GET/POST /api/admin/billing/coupons` | billing | 관리자 화면(admin-content) |
+| `GET /api/admin/billing/orders`(`?archived=1` 보관 주문), `POST /api/admin/billing/orders/:id/refund`, `GET/POST /api/admin/billing/coupons` | billing | 관리자 화면(admin-content) |
+| `GET /api/admin/billing/invites`, `POST /api/admin/billing/invites/:inviteeId`(보류 보상 지급·회수), `GET /api/admin/billing/pro-applications`, `POST /api/admin/billing/pro-applications/:id`, `GET /api/admin/billing/stats` | billing | 관리자 화면(admin-content) |
+| `POST /api/admin/auth/users/:id/contact-invalid`, `POST /api/admin/auth/users/:id/delete-hold` | auth | 관리자 회원 화면 |
+| `GET /api/notifications/push/key`, `POST/DELETE /api/notifications/push-subscriptions` | admin-content(저장) · core notify(발송) | 알림 화면·서비스 워커 |
+| 모든 `api()` 요청 헤더 `x-mimic-lang: ko|en` → 서버 콘텐츠·알림 언어 | web/ui.js · content | 도움말·FAQ·블로그·정책·알림 |
 | `GET /api/billing/quota` → `quota.summary` | billing | 쿼터 화면 |
 
 ## 4. 테스트

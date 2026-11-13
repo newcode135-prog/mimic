@@ -25,7 +25,7 @@ export const saveLinks = (urls) => call('/api/offline/tasks', { method: 'POST', 
 
 // 기기 인가로 계정 연결: 브라우저 탭에서 승인하면 토큰을 받아 저장한다
 export async function connectAccount() {
-  const d = await call('/api/auth/device/code', { method: 'POST', auth: false, body: { clientName: '미믹 브라우저 확장', appId: 'extension', scopes: ['files:write', 'services'] } });
+  const d = await call('/api/auth/device/code', { method: 'POST', auth: false, body: { clientName: '미믹 브라우저 확장', appId: 'extension', scopes: ['services'] } });
   await chrome.storage.session.set({ pendingCode: d.userCode });
   await chrome.tabs.create({ url: d.verificationUri });
   const until = Date.now() + (d.expiresIn || 600) * 1000;

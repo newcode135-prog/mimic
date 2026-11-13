@@ -1,4 +1,4 @@
-// 관리자 백오피스(K-06): /admin/:section — dashboard·users·orders·coupons(+Pro 신청)·reports·blocklist·quotas·logs
+// 관리자 백오피스(K-06): /admin/:section — dashboard·users·orders·coupons·pro(추천 보상)·reports·blocklist·quotas·logs
 // 다른 모듈의 관리자 API(결제·쿠폰·이의제기·피드백·지역 규칙)가 아직 없으면(404) "준비 중"을 보여 준다.
 import { api, h, icon, t, toast, toastError, modal, confirmDialog, promptDialog, formatBytes, formatDate, formatWon, loadCss } from '/ui.js';
 import { REASONS } from '/pages/copyright.js';
@@ -112,9 +112,9 @@ async function dashboard(root) {
           stat(n(bs.orders.refundRequested), '환불 요청', bs.orders.refundRequested > 0),
           stat(`${n(bs.subscriptions.active)} (자동 ${n(bs.subscriptions.autoRenew)})`, '활성 구독'),
           stat(`${n(bs.coupons.redeemed)} / ${n(bs.coupons.issued)}`, '쿠폰 사용 / 발급'),
-          h('a', { href: '/admin/coupons?tab=pro', style: { display: 'contents' } }, stat(n(bs.proPending), '추천 Pro 신청 대기', bs.proPending > 0)),
+          h('a', { href: '/admin/pro', style: { display: 'contents' } }, stat(n(bs.proPending), '추천 Pro 신청 대기', bs.proPending > 0)),
         )
-      : null,
+      : '',
     h('div', { class: 'ad-cols' }, statusTable(s.tasks, '클라우드 다운로드 작업'), statusTable(s.orders, '주문')),
     h(
       'div',
@@ -222,29 +222,34 @@ async function userDetail(id, reload) {
         ? box(t('정지 해제', 'Lift suspension'), h('button', { class: 'btn', onclick: () => patch({ unsuspend: true }, t('정지를 해제했습니다', 'Suspension lifted')) }, t('지금 해제', 'Lift now')))
         : box(t('일시 정지', 'Suspend'), h('div', { class: 'row' }, hours), reason, h('button', { class: 'btn danger', onclick: () => patch({ suspendHours: Number(hours.value), reason: reason.value || undefined }, t('정지했습니다', 'Suspended')) }, t('정지', 'Suspend'))),
       // 탈퇴 처리 중인 계정: 법 위반·도난 위험 등으로 삭제를 보류하거나 다시 진행(auth 모듈 API)
-      u.status === 'pending_delete'
+      u.status === 'pending_delete' || u.settings?.deleteHold
         ? box(
             t('탈퇴 처리', 'Account deletion'),
-            h('p', { class: 'small muted' }, t('7일 유예 뒤 자동 삭제됩니다. 조사가 필요하면 보류하세요.', 'Deleted automatically after the 7-day grace period. Put it on hold if you need to investigate.')),
             h(
-              'div',
-              { class: 'row' },
-              ...[
-                [true, t('삭제 보류', 'Hold deletion')],
-                [false, t('보류 해제', 'Release hold')],
-              ].map(([hold, label]) =>
-                h(
-                  'button',
-                  {
-                    class: `btn ${hold ? 'danger' : ''}`,
-                    onclick: () =>
-                      api(`/api/admin/auth/users/${encodeURIComponent(id)}/delete-hold`, { method: 'POST', body: { hold } })
-                        .then(() => (toast(hold ? '삭제를 보류했습니다' : '보류를 해제했습니다', 'ok'), userDetail(id, reload)))
-                        .catch(toastError),
-                  },
-                  label,
-                ),
-              ),
+              'p',
+              { class: 'small muted' },
+              u.settings?.deleteHold
+                ? t('지금 삭제 보류 중입니다. 해제하면 유예(7일)가 지난 계정은 다음 정리(매시간) 때 삭제됩니다.', 'Deletion is on hold. Once released, an account past its 7-day grace period is deleted at the next hourly cleanup.')
+                : t('7일 유예 뒤 자동 삭제됩니다. 조사가 필요하면 보류하세요.', 'Deleted automatically after the 7-day grace period. Put it on hold if you need to investigate.'),
+            ),
+            h(
+              'button',
+              {
+                class: `btn ${u.settings?.deleteHold ? '' : 'danger'}`,
+                onclick: async () => {
+                  const hold = !u.settings?.deleteHold;
+                  const ok = await confirmDialog(
+                    hold ? t('삭제 보류', 'Hold deletion') : t('보류 해제', 'Release hold'),
+                    hold ? t('이 계정의 탈퇴 삭제를 멈춥니다. 조사가 끝나면 보류를 해제하세요.', 'This stops the deletion of this account. Release the hold when your investigation is done.') : t('보류를 풀면 유예가 지난 계정은 곧 삭제되고 되돌릴 수 없습니다. 계속할까요?', 'Once released, an account past its grace period is deleted soon and cannot be restored. Continue?'),
+                    { okLabel: hold ? t('보류', 'Hold') : t('해제', 'Release'), danger: !hold },
+                  );
+                  if (!ok) return;
+                  api(`/api/admin/auth/users/${encodeURIComponent(id)}/delete-hold`, { method: 'POST', body: { hold } })
+                    .then(() => (toast(hold ? t('삭제를 보류했습니다', 'Deletion put on hold') : t('보류를 해제했습니다', 'Hold released'), 'ok'), userDetail(id, reload)))
+                    .catch(toastError);
+                },
+              },
+              u.settings?.deleteHold ? t('보류 해제', 'Release hold') : t('삭제 보류', 'Hold deletion'),
             ),
           )
         : null,
@@ -264,10 +269,20 @@ async function userDetail(id, reload) {
           'button',
           {
             class: `btn ${u.settings?.contactInvalidAt ? '' : 'danger'}`,
-            onclick: () =>
-              api(`/api/admin/auth/users/${encodeURIComponent(id)}/contact-invalid`, { method: 'POST', body: { invalid: !u.settings?.contactInvalidAt } })
+            onclick: async () => {
+              const invalid = !u.settings?.contactInvalidAt;
+              const ok = await confirmDialog(
+                invalid ? t('연락처 무효로 표시', 'Mark contact invalid') : t('무효 표시 해제', 'Clear invalid mark'),
+                invalid
+                  ? t('이 회원의 연락처를 무효로 표시합니다. 3년 이상 로그인하지 않은 계정이면 다음 휴면 정리 때 알림 없이 삭제되고 되돌릴 수 없습니다.', "This marks the member's contact as invalid. If the account has been inactive for 3+ years, it is deleted without notice at the next dormant cleanup and cannot be restored.")
+                  : t('무효 표시를 지우면 3년 이상 미로그인 계정의 즉시 삭제 대상에서 빠집니다.', 'Clearing the mark takes the account out of immediate deletion after 3+ years of inactivity.'),
+                { okLabel: invalid ? t('무효로 표시', 'Mark invalid') : t('해제', 'Clear'), danger: invalid },
+              );
+              if (!ok) return;
+              api(`/api/admin/auth/users/${encodeURIComponent(id)}/contact-invalid`, { method: 'POST', body: { invalid } })
                 .then(() => (toast(t('바꿨습니다', 'Updated'), 'ok'), userDetail(id, reload)))
-                .catch(toastError),
+                .catch(toastError);
+            },
           },
           u.settings?.contactInvalidAt ? t('무효 표시 해제', 'Clear invalid mark') : t('연락처 무효로 표시', 'Mark contact invalid'),
         ),
@@ -335,18 +350,21 @@ async function userDetail(id, reload) {
 const ORDER_STATUS = [['', '모든 상태'], ['paid', '결제 완료'], ['refund_requested', '환불 요청'], ['refunded', '환불됨'], ['pending', '결제 대기'], ['failed', '실패']];
 async function orders(root, ctx) {
   const out = h('div');
-  const status = select(ORDER_STATUS, ctx.query.status || '');
+  // archived: 삭제된 회원의 보관 결제 기록(billing_orders_archive, archived=1)
+  const status = select([...ORDER_STATUS, ['archived', t('삭제된 회원의 보관 기록', 'Archived (deleted members)')]], ctx.query.status || '');
   const load = async () => {
-    const r = await optional(`/api/admin/billing/orders?status=${status.value}`);
+    const archived = status.value === 'archived';
+    const r = await optional(`/api/admin/billing/orders?${archived ? 'archived=1' : `status=${status.value}`}`);
     if (!r) return out.replaceChildren(soon('결제·환불'));
     const items = listOf(r);
     out.replaceChildren(
+      ...(archived ? [h('p', { class: 'muted small' }, t('탈퇴·삭제된 회원의 결제 기록으로, 법정 보관 기간 동안만 남습니다. 여기서는 환불할 수 없습니다.', 'Payment records of deleted members, kept only for the legal retention period. They cannot be refunded here.'))] : []),
       table(
         ['주문', '회원', '상품', '금액', '수단', '상태', '결제 시각', ''],
         items.map((o) => {
-          const refundable = o.status === 'paid' || o.status === 'refund_requested';
+          const refundable = !o.archived && (o.status === 'paid' || o.status === 'refund_requested');
           return tr([
-            h('span', { class: 'ad-mono' }, o.id, o.testMode ? h('span', { class: 'badge', style: { marginLeft: '4px' } }, '테스트') : null),
+            h('span', { class: 'ad-mono' }, o.id, o.testMode ? h('span', { class: 'badge', style: { marginLeft: '4px' } }, '테스트') : null, o.archived ? h('span', { class: 'badge', style: { marginLeft: '4px' }, title: formatDate(o.archivedAt) }, t('보관', 'Archived')) : null),
             o.user || o.userId || '',
             o.label || o.productId || '',
             typeof o.amount === 'number' ? formatWon(o.amount) : '',
@@ -379,9 +397,8 @@ async function refund(o, reload) {
 // ---------- 쿠폰(billing 모듈 API: GET/POST /api/admin/billing/coupons {kind, days, count, maxUses, expiresAt}) ----------
 const COUPON_KINDS = [['paid', '프리미엄 코드(구매 인정)'], ['trial', '체험 코드'], ['free', '무료 증정 코드']];
 async function coupons(root, ctx) {
-  const tab = ctx.query.tab === 'pro' ? 'pro' : 'coupons';
-  const tabs = h('nav', { class: 'tabs' }, ...[['coupons', t('쿠폰', 'Coupons')], ['pro', t('추천 보상 Pro 신청', 'Referral Pro applications')]].map(([k, label]) => h('a', { href: `/admin/coupons?tab=${k}`, class: k === tab ? 'active' : '' }, label)));
-  if (tab === 'pro') return proApplications(root, tabs);
+  // 추천 보상 Pro 신청은 별도 메뉴(/admin/pro)로 옮겼다. 예전 주소도 열리게 한다
+  if (ctx.query.tab === 'pro') return ctx.navigate('/admin/pro', { replace: true });
   const out = h('div');
   const f = { kind: select(COUPON_KINDS, 'paid'), days: input({ type: 'number', min: 1, max: 3660, value: 30 }), count: input({ type: 'number', min: 1, max: 1000, value: 10 }), maxUses: input({ type: 'number', min: 1, value: 1 }), expiresAt: input({ type: 'date' }) };
   const load = async () => {
@@ -413,16 +430,91 @@ async function coupons(root, ctx) {
   };
   root.replaceChildren(
     head(t('쿠폰', 'Coupons')),
-    tabs,
     h('div', { class: 'card', style: { marginBottom: '16px' } }, h('h3', {}, t('쿠폰 발급', 'Issue coupons')), h('div', { class: 'ad-toolbar' }, field('종류', f.kind), field('프리미엄 일수', f.days), field('발급 수', f.count), field('코드당 사용 횟수', f.maxUses), field('만료일(선택)', f.expiresAt)), create),
     out,
   );
   await load();
 }
 
-// ---------- 추천 보상 Pro 신청(I-05, billing 모듈 API: GET /api/admin/billing/pro-applications, POST …/:id {status, note}) ----------
+// ---------- 추천 보상: Pro 신청(I-05) + 초대 보상 검토(I-04) ----------
+async function pro(root, ctx) {
+  const tab = ctx.query.tab === 'invites' ? 'invites' : 'apps';
+  const tabs = h(
+    'nav',
+    { class: 'tabs' },
+    ...[
+      ['apps', '/admin/pro', t('추천 보상 Pro 신청', 'Referral Pro applications')],
+      ['invites', '/admin/pro?tab=invites', t('초대 보상 검토', 'Invite reward review')],
+    ].map(([k, href, label]) => h('a', { href, class: k === tab ? 'active' : '' }, label)),
+  );
+  const box = h('div');
+  root.replaceChildren(head(t('추천 보상', 'Referral rewards')), tabs, box);
+  await (tab === 'invites' ? invites(box, ctx) : proApplications(box));
+}
+
+// 초대 검토(billing 모듈 API: GET /api/admin/billing/invites[?suspicious=1], POST …/:inviteeId {action: release|revoke} → {rewardDays})
+const INVITE_STATUS = { 0: ['정상', 'Normal', 'brand'], 1: ['보상 보류', 'Reward held', 'accent'], 2: ['보상 회수', 'Reward revoked', 'danger'] };
+async function invites(box, ctx) {
+  const filter = select([['1', t('보상 보류된 초대', 'Held invites')], ['', t('전체 초대', 'All invites')]], ctx.query.suspicious ?? '1');
+  const out = h('div');
+  const load = async () => {
+    const r = await optional(`/api/admin/billing/invites${filter.value === '1' ? '?suspicious=1' : ''}`);
+    if (!r) return out.replaceChildren(soon('초대 보상 검토'));
+    const act = async (x, action) => {
+      const release = action === 'release';
+      const ok = await confirmDialog(
+        release ? t('보상 지급', 'Release reward') : t('보상 회수', 'Revoke reward'),
+        release
+          ? t(`${x.inviter} 님에게 이 초대로 보류됐던 보상을 지급하고, 이 친구의 이후 구매에도 보상합니다.`, `${x.inviter} receives the reward held for this invite, and future purchases by this friend are rewarded too.`)
+          : t(`부정 참여로 보고 ${x.inviter} 님이 이 초대로 받은 보상을 거둡니다. 이 친구의 이후 구매에도 보상하지 않습니다.`, `This invite is treated as abuse: rewards ${x.inviter} got from it are taken back, and future purchases by this friend are not rewarded.`),
+        { okLabel: release ? t('지급', 'Release') : t('회수', 'Revoke'), danger: !release },
+      );
+      if (!ok) return;
+      try {
+        const res = await api(`/api/admin/billing/invites/${encodeURIComponent(x.inviteeId)}`, { method: 'POST', body: { action } });
+        const d = `${res.rewardDays > 0 ? '+' : ''}${n(res.rewardDays)}`;
+        toast(t(`처리했습니다 (보상 ${d}일)`, `Done (reward ${d} days)`), 'ok');
+        load();
+      } catch (e) {
+        toastError(e);
+      }
+    };
+    out.replaceChildren(
+      table(
+        [t('초대한 회원', 'Inviter'), t('가입한 친구', 'Invited friend'), t('경로', 'Via'), t('친구 구매', 'Friend bought'), t('지급 보상', 'Reward'), t('가입', 'Joined'), t('상태', 'Status'), ''],
+        listOf(r).map((x) => {
+          const [ko, en, cls] = INVITE_STATUS[x.suspicious] || [String(x.suspicious), String(x.suspicious), ''];
+          return tr([
+            x.inviter || x.inviterId,
+            x.invitee || x.inviteeId,
+            x.via === 'signup' ? t('초대 링크로 가입', 'Signup via link') : t('초대 코드 입력', 'Invite code'),
+            t(`${n(x.purchaseDays)}일`, `${n(x.purchaseDays)} days`),
+            t(`${n(x.rewardDays)}일`, `${n(x.rewardDays)} days`),
+            formatDate(x.createdAt),
+            h('span', { class: `badge ${cls}` }, t(ko, en)),
+            h(
+              'div',
+              { class: 'row' },
+              x.suspicious !== 0 ? h('button', { class: 'btn sm primary', onclick: () => act(x, 'release') }, t('지급', 'Release')) : null,
+              x.suspicious !== 2 ? h('button', { class: 'btn sm danger', onclick: () => act(x, 'revoke') }, t('회수', 'Revoke')) : null,
+            ),
+          ]);
+        }),
+      ),
+    );
+  };
+  filter.onchange = () => load().catch(toastError);
+  box.replaceChildren(
+    h('p', { class: 'muted' }, t('같은 기기에서 가입한 것으로 보이는 초대는 보상이 보류됩니다. 확인한 뒤 정상이면 지급하고, 부정 참여면 회수하세요. 결과는 초대한 회원에게 알림으로 갑니다.', 'Invites that look like sign-ups from the same device have their rewards held. Release them if they check out, or revoke them if they are abuse. The inviter is notified of the result.')),
+    h('div', { class: 'ad-toolbar' }, filter),
+    out,
+  );
+  await load();
+}
+
+// Pro 신청(billing 모듈 API: GET /api/admin/billing/pro-applications, POST …/:id {status, note})
 const PRO_STATUS = { pending: ['심사 대기', 'accent'], approved: ['승인', 'brand'], rejected: ['반려', 'danger'] };
-async function proApplications(root, tabs) {
+async function proApplications(box) {
   const out = h('div');
   const load = async () => {
     const r = await optional('/api/admin/billing/pro-applications');
@@ -456,7 +548,7 @@ async function proApplications(root, tabs) {
       ),
     );
   };
-  root.replaceChildren(head(t('쿠폰', 'Coupons')), tabs, h('p', { class: 'muted' }, t('승인·반려하면 신청자에게 사이트 알림과 이메일로 결과와 메모가 갑니다.', 'Approving or rejecting sends the result and note to the applicant by site notification and email.')), out);
+  box.replaceChildren(h('p', { class: 'muted' }, t('승인·반려하면 신청자에게 사이트 알림과 이메일로 결과와 메모가 갑니다.', 'Approving or rejecting sends the result and note to the applicant by site notification and email.')), out);
   await load();
 }
 
@@ -526,10 +618,24 @@ async function reports(root, ctx) {
       const r = await optional('/api/admin/offline/appeals');
       if (!r) return out.replaceChildren(soon('클라우드 다운로드 이의제기'));
       const items = listOf(r);
-      const act = (x, action) =>
+      const act = async (x, action) => {
+        // 인용하면 offline 모듈이 차단 항목 자체를 지운다 → 그 항목에 걸린 모든 회원의 차단이 함께 풀린다
+        if (action === 'unblock') {
+          const entry = x.block ? `${x.block.kind}: ${x.block.value}` : '—';
+          const ok = await confirmDialog(
+            t('이의 인용', 'Accept appeal'),
+            t(
+              `인용하면 차단 항목(${entry})을 차단 목록에서 지웁니다. 이 항목은 도메인 전체를 막는 것일 수 있으며, 이 회원만이 아니라 모든 회원에게 차단이 풀립니다. 계속할까요?`,
+              `Accepting deletes the block entry (${entry}) from the blocklist. The entry may cover a whole domain, and the block is lifted for every user, not just this member. Continue?`,
+            ),
+            { okLabel: t('인용하고 차단 해제', 'Accept and unblock'), danger: true },
+          );
+          if (!ok) return;
+        }
         api(`/api/admin/offline/appeals/${encodeURIComponent(x.id)}/resolve`, { method: 'POST', body: { action } })
           .then(() => (toast('처리했습니다', 'ok'), load()))
           .catch(toastError);
+      };
       out.replaceChildren(
         items.length
           ? table(
@@ -722,6 +828,14 @@ async function quotas(root) {
     h('h3', { style: { marginTop: '20px' } }, t('상품', 'Products')),
     table(['ID', '이름', '종류', '기간', '글로벌', '지역'], p.products.map((x) => tr([h('span', { class: 'ad-mono' }, x.id), x.label, x.kind, `${x.months}개월`, formatWon(x.price.global), formatWon(x.price.regional)]))),
     h('h3', { style: { marginTop: '20px' } }, t('지역 규칙(K-04)', 'Region rules (K-04)')),
+    h(
+      'p',
+      { class: 'muted small' },
+      t(
+        '가입 때 지역은 서버에 IP 국가 헤더(MIMIC_COUNTRY_HEADER)가 설정돼 있으면 그 값으로, 없으면 브라우저 언어로 정합니다(휴대폰 가입은 국가번호 우선). 가입한 뒤에는 회원의 지역을 바꿀 수 없습니다.',
+        "At signup, a member's region comes from the IP country header (MIMIC_COUNTRY_HEADER) when the server has one set, otherwise from the browser language (phone signups use the country code first). A member's region cannot be changed after signup.",
+      ),
+    ),
     regions,
   );
   const loadRegions = async () => {
@@ -758,7 +872,7 @@ async function logs(root, ctx) {
   await load();
 }
 
-const SECTIONS = { dashboard, users, orders, coupons, reports, blocklist, quotas, logs };
+const SECTIONS = { dashboard, users, orders, coupons, pro, reports, blocklist, quotas, logs };
 
 export async function render(root, ctx) {
   loadCss('/css/admin.css');

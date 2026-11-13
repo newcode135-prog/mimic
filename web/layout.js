@@ -152,7 +152,17 @@ function driveLayout() {
   };
 }
 
+// 로그아웃한 기기로 이 계정의 알림이 계속 가지 않게 이 기기의 푸시 구독을 지운다(실패해도 로그아웃은 진행)
+async function dropPush() {
+  try {
+    const sub = await (await navigator.serviceWorker?.getRegistration())?.pushManager?.getSubscription();
+    if (!sub) return;
+    await api('/api/notifications/push-subscriptions', { method: 'DELETE', body: { endpoint: sub.endpoint } }).catch(() => {});
+    await sub.unsubscribe();
+  } catch {}
+}
 async function logout() {
+  await dropPush();
   try {
     await api('/api/auth/logout', { method: 'POST' });
   } catch (e) {
@@ -283,18 +293,19 @@ function authLayout() {
 
 // ---------- 관리자 ----------
 const ADMIN_NAV = [
-  ['dashboard', 'chart', '대시보드'],
-  ['users', 'user', '회원'],
-  ['orders', 'ticket', '결제·환불'],
-  ['coupons', 'gift', '쿠폰'],
-  ['reports', 'flag', '신고·이의제기'],
-  ['blocklist', 'shield', '차단 목록'],
-  ['quotas', 'settings', '쿼터 정책'],
-  ['logs', 'list', '감사 로그'],
+  ['dashboard', 'chart', '대시보드', 'Dashboard'],
+  ['users', 'user', '회원', 'Members'],
+  ['orders', 'ticket', '결제·환불', 'Payments & refunds'],
+  ['coupons', 'gift', '쿠폰', 'Coupons'],
+  ['pro', 'crown', '추천 보상', 'Referral rewards'],
+  ['reports', 'flag', '신고·이의제기', 'Reports & appeals'],
+  ['blocklist', 'shield', '차단 목록', 'Blocklist'],
+  ['quotas', 'settings', '쿼터 정책', 'Quota policy'],
+  ['logs', 'list', '감사 로그', 'Audit log'],
 ];
 function adminLayout() {
   const main = h('main', { class: 'admin-main' });
-  const links = ADMIN_NAV.map(([key, ic, label]) => h('a', { class: 'nav-item', href: `/admin/${key}`, 'data-key': key, html: `${icon(ic)}<span>${label}</span>` }));
+  const links = ADMIN_NAV.map(([key, ic, ko, en]) => h('a', { class: 'nav-item', href: `/admin/${key}`, 'data-key': key, html: `${icon(ic)}<span>${t(ko, en)}</span>` }));
   const aside = h('aside', { class: 'sidebar' }, logo('/admin/dashboard'), h('div', { class: 'badge accent', style: { margin: '0 6px 12px' } }, '관리자'), ...links, h('a', { class: 'nav-item', href: '/drive/all', html: `${icon('chevronLeft')}<span>드라이브로</span>` }));
   // 휴대폰 화면에서 관리자 메뉴를 여는 버튼
   const bar = h('div', { class: 'admin-mobile-bar mobile-only' }, h('button', { class: 'btn ghost icon-btn', 'aria-label': '관리자 메뉴', html: icon('menu'), onclick: () => aside.classList.toggle('open') }), h('b', {}, '관리자'));

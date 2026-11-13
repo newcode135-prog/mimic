@@ -12,6 +12,7 @@ import { usage } from './core/files.js';
 import { capacityOf, limitsFor, isPremium } from './core/plans.js';
 import { fail } from './core/util.js';
 import { gcBlobs } from './core/storage.js';
+import { bindNotify } from './core/notify.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.join(here, '..', 'web');
@@ -19,6 +20,7 @@ const webDir = path.join(here, '..', 'web');
 export async function createApp(overrides = {}) {
   const cfg = loadConfig(overrides);
   const db = openDb(cfg.dataDir);
+  bindNotify(db, cfg); // notify() 가 웹 푸시(K-05)에 쓸 설정
   const events = new EventEmitter(); // 모듈 간 이벤트: user:created, user:login, payment:completed, file:created, offline:completed
   events.setMaxListeners(50);
   // hooks.activity: 로그인한 요청마다 동기 함수 (req, ctx) 로 불린다(모든 API 보다 먼저, 모듈은 register 에서 push). 던지면 그 요청은 오류로 끝난다(H-04 계정 공유 탐지 등)
@@ -56,6 +58,15 @@ export async function createApp(overrides = {}) {
   app.use(['/api/dev', /^\/api\/auth\/oauth\/[^/]+\/dev\/?$/i], localOnly);
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, modules: Object.keys(ctx.modules), failed: ctx.failedModules }));
+  // Android TWA 가 이 사이트를 주소창 없이 열 수 있게 하는 Digital Asset Links(K-09). 설정이 없으면 빈 목록
+  // (정적 파일은 점으로 시작하는 폴더를 건너뛰고 SPA 는 확장자 있는 주소를 받지 않으므로 여기서 직접 답한다)
+  app.get('/.well-known/assetlinks.json', (_req, res) =>
+    res.json(
+      cfg.androidPackage && cfg.androidSha256?.length
+        ? [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: cfg.androidPackage, sha256_cert_fingerprints: cfg.androidSha256 } }]
+        : [],
+    ),
+  );
   app.get('/api/config', (_req, res) =>
     res.json({
       dev: cfg.dev,

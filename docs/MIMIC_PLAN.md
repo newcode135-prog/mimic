@@ -53,6 +53,8 @@
 7. **도메인·사업자 정보**: 통신판매업 신고, 개인정보처리방침에 들어갈 정보
 8. **상표**: "미믹/Mimic" 선등록 상표 조사(KIPRIS)
 9. **"A와 B의 중간" 해석 확인**: 2장 표 아래의 해석이 맞는지
+10. **프리미엄 만료 뒤 금고 데이터**: 금고는 프리미엄 전용이라 만료되면 열거나 꺼낼 수 없다. 이 데이터를 드라이브 초과분처럼 단계적으로 지울지, 보관 기간·사전 알림을 따로 둘지(지우면 되돌릴 수 없음)
+11. **토스 자동 결제(빌링키) 저장 방식**: 구독 자동 갱신에 필요한 빌링키를 서버 암호화 키로 암호화해 둘지(규약 0-7은 비밀 값을 해시로만 저장) — 토스 빌링 계약과 함께 결정
 
 ---
 
@@ -491,6 +493,9 @@ npm ci
 #   MIMIC_EMAIL_API / MIMIC_EMAIL_API_KEY / MIMIC_EMAIL_FROM   ← 인증코드·알림 메일 발송 업체
 #   MIMIC_SMS_API / MIMIC_SMS_API_KEY / MIMIC_SMS_FROM         ← 문자 인증 발송 업체
 #   YTDLP_PATH=/opt/homebrew/bin/yt-dlp   ← SNS 링크 받기(A-04)
+#   MIMIC_VAPID_PUBLIC_KEY / MIMIC_VAPID_PRIVATE_KEY / MIMIC_VAPID_SUBJECT  ← 웹 푸시(K-05). 없으면 <MIMIC_DATA>/vapid.json 을
+#                                         자동 생성 — 데이터와 함께 백업할 것(키가 바뀌면 기존 푸시 구독이 모두 끊김)
+#   MIMIC_ANDROID_PACKAGE / MIMIC_ANDROID_SHA256  ← 안드로이드 앱(TWA) 연결 /.well-known/assetlinks.json (지문은 쉼표로 여러 개)
 #   GOOGLE_CLIENT_ID·SECRET / FACEBOOK_CLIENT_ID·SECRET / APPLE_* / TOSS_CLIENT_KEY·TOSS_SECRET_KEY / TELEGRAM_BOT_TOKEN
 npm run seed -- <관리자 이메일>   # 첫 관리자 계정
 npm start   # 기본 포트 4300
@@ -557,9 +562,10 @@ npm start   # 기본 포트 4300
 
 - 기획보고서 완성(Claude Docs, 비공개). 이 문서가 그 내용을 모두 포함하고 대체함
 - PikPak 조사 완료: 공개 페이지·FAQ·도움말·결제·로그인 화면, 무료 계정 웹 드라이브(QR 로그인), 플랫폼별 소개 페이지
-- **구현 완료(GitHub main)**: 코어 + 기능 모듈 9개(auth·drive·offline·media·share·vault·billing·integrations·admin-content) + 플랫폼(PWA·데스크톱·확장·CLI·텔레그램 봇). 기능 76개 중 **69개 완료, 7개 부분**(아래). 자동 테스트 236개 모두 통과. 독립 검수 2회(1차 126건·2차 70건 지적 → 수정)
+- **구현 완료(GitHub main)**: 코어 + 기능 모듈 9개(auth·drive·offline·media·share·vault·billing·integrations·admin-content) + 플랫폼(PWA·데스크톱·확장·CLI·텔레그램 봇). 기능 76개 중 **70개 완료, 6개 부분**(아래). 자동 테스트 275개 모두 통과. 독립 검수 2회(1차 126건·2차 70건 지적 → 수정)
 - **브라우저 실사용 점검(2026-11-13)**: 이메일 가입(인증코드) → My Pack 생성 → 업로드 → 영상 재생(자막 자동 연결) → 클라우드 다운로드(링크 → 내 드라이브, 남은 횟수 차감) → 공유 링크 열기 → 테스트 결제(프리미엄 즉시 적용·10TB) → 관리자 화면 8개 메뉴. 모두 정상
-- **부분 완료 7개**: A-04(yt-dlp 설치 필요), B-09(SD 카드는 안드로이드 앱 전용), C-02(HDR 은 기기 지원에 따름), I-05(추천 보상 Pro 조건 미확인), K-03(영어 본문 일부), K-05(휴대폰 앱 푸시는 앱 출시 후), K-09(설치 파일 빌드·서명 전). 사유는 `docs/features.json` 의 `note`
+- **부분 완료 6개**: A-04(yt-dlp 설치 필요), B-09(SD 카드는 안드로이드 앱 전용), C-02(HDR 은 기기 지원에 따름), I-05(추천 보상 Pro 조건 미확인), K-05(웹 푸시는 실제 발송, 휴대폰 앱 푸시는 앱 출시 후), K-09(설치 파일 빌드·서명 전).
+- **2차 마무리(2026-11-13 오후)**: 영어 본문 전체(도움말·FAQ·블로그·약관), 알림·메일 영어, 웹 푸시 실제 발송(VAPID·RFC 8291 암호화), 관리자 화면(추천 보상 메뉴·초대 보상 검토·보관 주문·연락처 무효·삭제 보류), 앱 설치 버튼·CLI 설치 명령, 안드로이드 앱 연결 파일, 외부 플레이어 개선, 차단된 공유 표시, 접속 국가로 다운로드 지역 확인 사유는 `docs/features.json` 의 `note`
 - **운영 전 외부 준비물**: PG 계약·토스 키, 소셜 로그인 키, 문자·메일 발송 업체, 웹하드 등록 등 법무 검토, 맥미니·도메인·HTTPS, 저장 용량 결정(Q-5)
 - 다음 작업: 위 외부 준비물 → 맥미니 배포(11장) → 클로즈드 베타
 - **작업 관리**: GitHub 저장소 https://github.com/newcode135-prog/mimic 의 Issues. 기능 76개·결정 9개·작업 3개가 이슈로 등록되어 있고, 라벨(`P0~P2`, `area:*`, `module:*`, `feature/decision/task`, `needs-verification`)과 마일스톤(0 준비 ~ 3 완성)으로 분류됨. 원본 데이터는 `docs/features.json`, 재생성은 `node scripts/github-setup.mjs newcode135-prog/mimic`

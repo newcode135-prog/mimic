@@ -1,4 +1,4 @@
-// 정책 문서 7종(J-04): 초안 표시 + 문서 목록·목차. 본문은 한국어만 제공
+// 정책 문서 7종(J-04): 초안 표시 + 문서 목록·목차. 영어본은 편의 번역이고 한국어본이 우선한다
 import { api, h, icon, t } from '/ui.js';
 import { setup, docBody } from '/pages/help.js';
 
@@ -27,7 +27,7 @@ export async function render(root, ctx) {
           { class: 'mc-article mc-policy' },
           h('h1', {}, policy.title),
           policy.draft ? h('div', { class: 'mc-draft', html: icon('info') }, h('span', {}, t('초안 — 법무 검토 필요. 정식 게시 전 내용이 바뀔 수 있어요.', 'Draft — pending legal review. Content may change before publication.'))) : null,
-          h('p', { class: 'muted small' }, t(`최종 수정일 ${policy.updated}`, `Last updated ${policy.updated}`), t('', ' · This document is available in Korean only.')),
+          h('p', { class: 'muted small' }, t(`최종 수정일 ${policy.updated}`, `Last updated ${policy.updated}`), t('', ' · This English version is a translation provided for convenience. If it differs from the Korean version, the Korean version prevails.')),
           ...policy.sections.map((s) => h('section', { id: s.id }, h('h2', {}, s.title), docBody(s.body))),
         ),
       ),

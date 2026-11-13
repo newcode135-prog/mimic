@@ -123,9 +123,9 @@
 
     { "id": "K-01", "area": "K", "module": "admin-content", "priority": "P0", "verification": "공식", "status": "done", "title": "고객지원", "rule": "도움말 센터, FAQ, 문의, 지원 이메일" },
     { "id": "K-02", "area": "K", "module": "admin-content", "priority": "P1", "verification": "공식", "status": "done", "title": "소개 페이지", "rule": "서비스 소개, BT 소개, 플랫폼별 다운로드, TV 설치 안내, 블로그" },
-    { "id": "K-03", "area": "K", "module": "admin-content", "priority": "P1", "verification": "로그인 확인", "status": "partial", "note": "영어 화면은 있음, 도움말·블로그 본문 영어판은 아직 일부", "title": "다국어", "rule": "URL 로케일, 설정에서 언어 변경(한국어·영어부터)" },
+    { "id": "K-03", "area": "K", "module": "admin-content", "priority": "P1", "verification": "로그인 확인", "status": "done", "title": "다국어", "rule": "URL 로케일, 설정에서 언어 변경(한국어·영어부터)" },
     { "id": "K-04", "area": "K", "module": "auth", "priority": "P2", "verification": "공식", "status": "done", "title": "지역 정책", "rule": "국가별 가입·다운로드 제한 설정" },
-    { "id": "K-05", "area": "K", "module": "admin-content", "priority": "P0", "verification": "공식", "status": "partial", "note": "웹 푸시는 구현, 휴대폰 앱 푸시는 앱 출시 후", "title": "알림", "rule": "이메일·앱 푸시·사이트 내 알림(만료, 삭제 예고, 토큰 생성, 다운로드 완료 등)" },
+    { "id": "K-05", "area": "K", "module": "admin-content", "priority": "P0", "verification": "공식", "status": "partial", "note": "웹 푸시(VAPID)·사이트 알림·이메일 동작, 휴대폰 앱 푸시는 앱 출시 후", "title": "알림", "rule": "이메일·앱 푸시·사이트 내 알림(만료, 삭제 예고, 토큰 생성, 다운로드 완료 등)" },
     { "id": "K-06", "area": "K", "module": "admin-content", "priority": "P0", "verification": "미확인", "status": "done", "title": "관리자(백오피스)", "rule": "회원·결제·환불·쿠폰 발급·신고·차단·쿼터 정책·통계. 외부에서 볼 수 없어 미믹 기준으로 새로 설계" },
     { "id": "K-07", "area": "K", "module": "integrations", "priority": "P1", "verification": "로그인 확인", "status": "done", "title": "환경설정", "rule": "기본·전송·액세스 및 통합 3개 탭" },
     { "id": "K-08", "area": "K", "module": "drive", "priority": "P1", "verification": "로그인 확인", "status": "done", "title": "온보딩 기본 콘텐츠", "rule": "신규 계정에 기본 폴더 \"My Pack\"과 미믹 자체 튜토리얼 영상, 무료 클라우드 다운로드 보너스 2회" },
@@ -140,7 +140,9 @@
     { "id": "Q-6", "title": "토렌트 시딩 정책", "detail": "\"우리 클라우드 안에만\" 원칙: 다운로드 중 업로드 제한·완료 즉시 시딩 중지 여부(속도와 상충)" },
     { "id": "Q-7", "title": "도메인·사업자 정보", "detail": "통신판매업 신고, 개인정보처리방침 기재 정보" },
     { "id": "Q-8", "title": "상표 \"미믹/Mimic\" 조사", "detail": "KIPRIS 선등록 상표 검색 후 출원" },
-    { "id": "Q-9", "title": "\"A와 B의 중간\" 디자인 해석 확인", "detail": "현재 해석: 메뉴 구성·흐름·정책 수치는 PikPak과 같게, 로고·색·아이콘·문구·약관은 미믹 고유. 사용자 확인 대기" }
+    { "id": "Q-9", "title": "\"A와 B의 중간\" 디자인 해석 확인", "detail": "현재 해석: 메뉴 구성·흐름·정책 수치는 PikPak과 같게, 로고·색·아이콘·문구·약관은 미믹 고유. 사용자 확인 대기" },
+    { "id": "Q-10", "title": "프리미엄 만료 뒤 금고 데이터 처리", "detail": "금고는 프리미엄 전용이라 만료되면 열거나 꺼낼 수 없음. 단계적 삭제 / 별도 보관 기간·사전 알림 중 선택 필요(삭제는 되돌릴 수 없음). 정해지면 billing runExpiry 에 금고 단계를 따로 넣는다" },
+    { "id": "Q-11", "title": "토스 자동 결제(빌링키) 저장 방식", "detail": "구독 자동 갱신용 빌링키를 서버 암호화 키로 암호화 저장할지 결정(규약 0-7 은 비밀 값을 해시로만 저장). 토스 빌링 계약과 함께 결정" }
   ],
   "tasks": [
     { "id": "T-1", "status": "done", "module": "core", "milestone": "M0", "title": "공통 뼈대 완성", "detail": "작성됨: config.js, db.js, schema.sql. 남음: auth.js, storage.js, files.js, plans.js, quota.js, notify.js, server/index.js(모듈 자동 등록), 웹 화면 틀(index.html·app.js·ui.js·styles.css·layout.js), test/helpers.js" },

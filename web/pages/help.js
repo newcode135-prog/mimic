@@ -2,9 +2,6 @@
 import { api, h, esc, icon, t, loadCss, getLang, setLang } from '/ui.js';
 
 // 공개 화면 공통 준비: 스타일 + 주소의 ?lang=ko|en 로 언어 바꾸기(K-03 URL 로케일)
-// 영어로 볼 때: 본문은 한국어만 있다고 알린다(정책 화면과 같은 안내)
-export const koOnly = () => (getLang() === 'en' ? h('p', { class: 'muted small' }, 'This content is available in Korean only.') : null);
-
 export function setup(ctx) {
   loadCss('/css/content.css');
   const l = ctx.query?.lang;
@@ -16,8 +13,32 @@ export function setup(ctx) {
   return false;
 }
 
-// 본문 안의 [화면 이름] 을 해당 화면 링크로 바꾼다
+// 본문 안의 [화면 이름] 을 해당 화면 링크로 바꾼다(영어 본문은 영어 화면 이름)
 const LINKS = {
+  'Contact us': '/contact',
+  'Copyright report': '/copyright',
+  'Copyright notice': '/copyright',
+  Report: '/copyright?tab=report',
+  'Reports & appeals': '/copyright?tab=appeal',
+  'Check-in guide': '/check-in-guide',
+  Apps: '/apps',
+  'Apps > Browser extension': '/apps/extension',
+  'Invite friends': '/drive/invite',
+  'Subscriptions & purchases': '/drive/orders',
+  'Subscriptions & purchases > Subscriptions': '/drive/orders',
+  'Subscriptions & purchases > Manage subscription': '/drive/orders',
+  'Settings > Transfer quota': '/drive/quota',
+  'My shares': '/drive/shared',
+  'Account & security': '/drive/account',
+  'Account & security > Password': '/drive/account/password',
+  'Account & security > Connected apps': '/drive/account/apps',
+  'Account & security > Close account': '/drive/account/delete',
+  'Connected apps': '/drive/account/apps',
+  'Settings > General': '/drive/settings/basic',
+  'Settings > General > Share code display': '/drive/settings/basic',
+  'Settings > Transfer': '/drive/settings/transfer',
+  'Settings > Access & integrations': '/drive/settings/integrations',
+  'Settings > Access & integrations > MCP': '/drive/settings/integrations',
   문의하기: '/contact',
   '저작권 신고': '/copyright',
   신고하기: '/copyright?tab=report',
@@ -86,7 +107,7 @@ export async function render(root, ctx) {
 
   if (ctx.params.slug) {
     const { article, category, related } = await api(`/api/content/help/${encodeURIComponent(ctx.params.slug)}`);
-    document.title = `${article.title} — 미믹 도움말`;
+    document.title = `${article.title} — ${t('미믹 도움말', 'Mimic help')}`;
     const side = h('nav', { class: 'mc-side', 'aria-label': t('도움말 분류', 'Help categories') }, h('h4', {}, t('분류', 'Categories')));
     for (const c of categories) {
       side.append(h('a', { href: `/help/${c.articles[0]?.slug}`, class: c.id === category.id ? 'active' : '', html: `${icon(c.icon)}<span>${esc(title(c))}</span>` }));
@@ -103,7 +124,7 @@ export async function render(root, ctx) {
             'div',
             {},
             h('div', { class: 'mc-crumbs' }, h('a', { href: '/help' }, t('도움말 센터', 'Help center')), '›', h('span', {}, title(category))),
-            h('article', { class: 'mc-article' }, h('h1', {}, article.title), koOnly(), docBody(article.body)),
+            h('article', { class: 'mc-article' }, h('h1', {}, article.title), docBody(article.body)),
             related.length
               ? h('div', { class: 'card', style: { marginTop: '16px' } }, h('h3', {}, t('같은 분류의 다른 글', 'Related articles')), h('div', { class: 'col' }, ...related.map((a) => h('a', { href: `/help/${a.slug}` }, a.title))))
               : null,
@@ -122,7 +143,6 @@ export async function render(root, ctx) {
     h('span', { class: 'mc-eyebrow' }, 'Help center'),
     h('h1', {}, t('무엇을 도와드릴까요?', 'How can we help?')),
     searchBox(ctx.navigate, ctx.query.q || ''),
-    koOnly(),
   );
   let bodyEl;
   if (results) {

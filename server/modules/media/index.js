@@ -14,6 +14,7 @@ import { toApi, requireNode, listChildren, createFolder, createFileNode, checkCa
 import { isPremium, speedFor, SLOW_BPS, GB } from '../../core/plans.js';
 import { addUsage, checkTransfer } from '../../core/quota.js';
 import { tx } from '../../core/db.js';
+import { readPrefs, sortRows } from '../drive/index.js';
 import * as ff from './ff.js';
 
 export const MAX_TRANSCODES = 2; // 동시 변환 수. 나머지는 대기열
@@ -351,10 +352,11 @@ export function register(app, ctx) {
     const n = playableFile(req, req.params.id);
     const body = Buffer.from(JSON.stringify([req.user.id, n.id, now() + EXTERNAL_URL_MS, req.authKind === 'token' ? req.tokenId : null])).toString('base64url');
     const url = `${req.protocol}://${req.get('host')}/api/media/x/${body}.${sign(body)}/${encodeURIComponent(n.name)}`;
-    // 데스크톱 앱은 이 링크를 Chromium 창에서 그대로 연다: 브라우저가 원본 그대로 재생하는 형식(mp4·webm·mp3 등)만 된다
+    // 데스크톱 앱은 id 가 있으면 미믹 플레이어(/play/<id>, 서버 변환)로, 예전 앱은 url 을 Chromium 창에서 그대로 연다(브라우저 형식만 재생)
     const p = await probeOf(n).catch(() => null);
     const mimicPlayable = !!p && ff.browserPlayable(kindOf(n), extOf(n.name), p);
-    res.json({ url, expiresAt: now() + EXTERNAL_URL_MS, potplayer: `potplayer://${url}`, vlc: `vlc://${url}`, mimic: `mimic://play?url=${encodeURIComponent(url)}`, mimicPlayable });
+    const mimic = `mimic://play?id=${encodeURIComponent(n.id)}&url=${encodeURIComponent(url)}`;
+    res.json({ url, expiresAt: now() + EXTERNAL_URL_MS, potplayer: `potplayer://${url}`, vlc: `vlc://${url}`, mimic, mimicPlayable });
   });
 
   // ---------- 시청 기록(C-06) ----------
@@ -406,7 +408,8 @@ export function register(app, ctx) {
     const siblings = listChildren(db, req.user.id, n.parent_id)
       .filter((x) => x.kind === 'file')
       .sort((a, b) => a.name.localeCompare(b.name, 'ko', { numeric: true }));
-    const same = group(kind) ? siblings.filter((x) => x.id === n.id || group(kindOf(x)) === group(kind)) : [];
+    // 이전/다음은 드라이브 목록(/api/drive/list)과 같은 저장된 정렬
+    const same = group(kind) ? sortRows(siblings.filter((x) => x.id === n.id || group(kindOf(x)) === group(kind)), readPrefs(getSettings(req.user), n.parent_id || 'root')) : [];
     const i = same.findIndex((x) => x.id === n.id);
     const base = baseOf(n.name).toLowerCase();
     // 이름이 같은 자막은 자동으로 붙이고, 같은 폴더의 다른 srt·vtt 는 플레이어에서 골라 붙인다
@@ -432,7 +435,7 @@ export function register(app, ctx) {
       hdr: !!p?.hdr,
       qualities: qualitiesFor(req.user, kind, p),
       defaultQuality: kind === 'video' && p ? defaultQuality(req.user, n, kind, p) : null,
-      // prevId·nextId 는 이름순. ids(같은 종류 파일)는 화면이 드라이브 목록(/api/drive/list, 사용자가 고른 정렬)과 맞춰 이전/다음을 고를 때 쓴다
+      // prevId·nextId·ids(같은 종류 파일)는 사용자가 드라이브에 저장한 정렬 순서
       siblings: { prevId: i > 0 ? same[i - 1].id : null, nextId: i >= 0 && i < same.length - 1 ? same[i + 1].id : null, ids: same.map((x) => x.id) },
       history,
       playbackBlocked: playable(kind) && blocked(req.user),

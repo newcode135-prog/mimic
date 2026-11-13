@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import net from 'node:net';
 
 export const now = () => Date.now();
 export const newId = (prefix = '') => prefix + crypto.randomBytes(12).toString('base64url');
@@ -46,3 +47,12 @@ export function periodKeys(ts = now(), offsetMin = 540) {
 }
 
 export const DAY = 864e5;
+
+// 내부망·루프백·링크로컬·멀티캐스트 주소인지(SSRF 차단: 클라우드 다운로드·웹 푸시가 같이 쓴다)
+const PRIVATE = new net.BlockList();
+for (const [a, p] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16], ['224.0.0.0', 3]]) PRIVATE.addSubnet(a, p, 'ipv4');
+for (const [a, p] of [['::', 127], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]]) PRIVATE.addSubnet(a, p, 'ipv6');
+export function isPrivateIp(ip) {
+  const v4 = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  return net.isIPv4(v4) ? PRIVATE.check(v4, 'ipv4') : PRIVATE.check(ip, 'ipv6');
+}

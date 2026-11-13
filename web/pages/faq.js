@@ -1,6 +1,6 @@
 // 자주 묻는 질문(K-01): 분류별 펼치기 + 바로 거르기
 import { api, h, icon, t } from '/ui.js';
-import { setup, koOnly } from '/pages/help.js';
+import { setup } from '/pages/help.js';
 
 export async function render(root, ctx) {
   if (setup(ctx)) return;
@@ -27,7 +27,6 @@ export async function render(root, ctx) {
     h(
       'div',
       { class: 'container narrow' },
-      koOnly(),
       list,
       h('div', { class: 'mc-note brand', style: { marginTop: '24px' }, html: icon('help') }, h('div', {}, t('더 궁금한 점이 있다면 ', 'Still have questions? '), h('a', { href: '/help' }, t('도움말 센터', 'Help center')), ' · ', h('a', { href: '/contact' }, t('문의하기', 'Contact us')))),
     ),

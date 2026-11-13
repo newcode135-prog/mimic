@@ -179,11 +179,15 @@ const customerKeyOf = (cfg, userId) => sha256(`${cfg.secret}:toss-customer:${use
 const cardOf = (db, userId) => db.prepare('SELECT * FROM billing_cards WHERE user_id=?').get(userId);
 const mask = (s) => (s ? String(s).slice(0, 2) + '***' : '***');
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+const daysEn = (n) => `${n} day${n === 1 ? '' : 's'}`;
 
-function tell(ctx, userId, { kind, title, body = '', link = null, email = false }) {
-  notify(ctx.db, userId, { kind, title, body, link });
+// titleEn·bodyEn: 영어 사용자용(K-03). 이메일도 계정 언어가 영어면 영어로 보낸다
+function tell(ctx, userId, { kind, title, body = '', link = null, titleEn = null, bodyEn = null, email = false }) {
+  notify(ctx.db, userId, { kind, title, body, link, titleEn, bodyEn });
   const u = email && userById(ctx.db, userId);
-  if (u?.email) sendMessage(ctx.db, ctx.cfg, { channel: 'email', to: u.email, subject: `[미믹] ${title}`, body });
+  if (!u?.email) return;
+  const en = u.lang === 'en';
+  sendMessage(ctx.db, ctx.cfg, { channel: 'email', to: u.email, subject: en ? `[Mimic] ${titleEn || title}` : `[미믹] ${title}`, body: (en && bodyEn) || body });
 }
 
 // 프리미엄 연장. 남은 기간 뒤에 이어 붙이고, 만료 처리 단계는 없앤다
@@ -362,6 +366,8 @@ export function applyOrder(ctx, order, t = now(), card = null) {
     kind: 'payment',
     title: order.renewal ? '구독이 자동 갱신되었습니다' : '결제가 완료되었습니다',
     body: `${p.label} · ₩${order.amount.toLocaleString('ko-KR')}`,
+    titleEn: order.renewal ? 'Your subscription was renewed automatically' : 'Payment complete',
+    bodyEn: `${p.labelEn || p.label} · ₩${order.amount.toLocaleString('en-US')}`,
     link: '/drive/orders',
   });
   ctx.events?.emit('payment:completed', { userId: uid, orderId: order.id, productId: p.id, days: order.days });
@@ -392,7 +398,14 @@ function revokeOrder(ctx, o, t = now()) {
       db.prepare('DELETE FROM billing_referral_rewards WHERE id=?').run(r.id);
       if (r.reward_days) {
         shortenPremium(db, r.inviter_id, r.reward_days, t);
-        tell(ctx, r.inviter_id, { kind: 'invite', title: `초대 보상 ${r.reward_days}일이 회수되었습니다`, body: '초대한 친구의 결제가 환불되어 그 결제로 받은 보상을 거두었습니다.', link: '/drive/invite' });
+        tell(ctx, r.inviter_id, {
+          kind: 'invite',
+          title: `초대 보상 ${r.reward_days}일이 회수되었습니다`,
+          body: '초대한 친구의 결제가 환불되어 그 결제로 받은 보상을 거두었습니다.',
+          titleEn: `${daysEn(r.reward_days)} of invite reward taken back`,
+          bodyEn: "The friend you invited got a refund, so the reward from that payment was taken back.",
+          link: '/drive/invite',
+        });
       }
       const inv = db.prepare('SELECT month FROM billing_invites WHERE invitee_id=?').get(r.invitee_id);
       if (inv) syncUploadBonus(ctx, r.inviter_id, inv.month, t);
@@ -476,7 +489,15 @@ export function rewardInviter(ctx, inviteeId, days, source, t = now()) {
       }
       if (reward > 0) {
         extendPremium(db, inviterId, reward, t);
-        tell(ctx, inviterId, { kind: 'invite', title: `초대 보상으로 프리미엄 ${reward}일을 받았습니다`, body: `초대한 친구(${mask(invitee.name || invitee.email)})가 프리미엄을 구매했어요.`, link: '/drive/invite' });
+        const who = mask(invitee.name || invitee.email);
+        tell(ctx, inviterId, {
+          kind: 'invite',
+          title: `초대 보상으로 프리미엄 ${reward}일을 받았습니다`,
+          body: `초대한 친구(${who})가 프리미엄을 구매했어요.`,
+          titleEn: `You received ${daysEn(reward)} of Premium as an invite reward`,
+          bodyEn: `A friend you invited (${who}) bought Premium.`,
+          link: '/drive/invite',
+        });
       }
       syncUploadBonus(ctx, inviterId, inv.month, t);
       return reward;
@@ -508,8 +529,26 @@ export function reviewInvite(ctx, inviteeId, action, t = now()) {
     if (delta < 0) shortenPremium(db, inv.inviter_id, -delta, t);
     syncUploadBonus(ctx, inv.inviter_id, inv.month, t);
   });
-  if (delta > 0) tell(ctx, inv.inviter_id, { kind: 'invite', title: `보류됐던 초대 보상 ${delta}일을 받았습니다`, body: '확인 결과 정상 초대로 판단되어 보류했던 보상을 지급했습니다.', link: '/drive/invite' });
-  if (delta < 0) tell(ctx, inv.inviter_id, { kind: 'invite', title: `초대 보상 ${-delta}일이 회수되었습니다`, body: '확인 결과 정상적인 초대로 보기 어려워 그 친구의 구매로 받은 보상을 거두었습니다.', link: '/drive/invite' });
+  if (delta > 0) {
+    tell(ctx, inv.inviter_id, {
+      kind: 'invite',
+      title: `보류됐던 초대 보상 ${delta}일을 받았습니다`,
+      body: '확인 결과 정상 초대로 판단되어 보류했던 보상을 지급했습니다.',
+      titleEn: `You received ${daysEn(delta)} of invite reward that had been on hold`,
+      bodyEn: 'After review, the invite was found to be genuine, so the reward on hold has been granted.',
+      link: '/drive/invite',
+    });
+  }
+  if (delta < 0) {
+    tell(ctx, inv.inviter_id, {
+      kind: 'invite',
+      title: `초대 보상 ${-delta}일이 회수되었습니다`,
+      body: '확인 결과 정상적인 초대로 보기 어려워 그 친구의 구매로 받은 보상을 거두었습니다.',
+      titleEn: `${daysEn(-delta)} of invite reward taken back`,
+      bodyEn: "After review, the invite didn't appear to be genuine, so the reward from that friend's purchases was taken back.",
+      link: '/drive/invite',
+    });
+  }
   return { inviterId: inv.inviter_id, suspicious: action === 'release' ? 0 : 2, rewardDays: delta };
 }
 
@@ -529,7 +568,14 @@ function syncUploadBonus(ctx, inviterId, month, t) {
   }
   if (given < want) {
     quota.grant(db, inviterId, { kind: 'up', amount: want - given, period: monthKey(t), validFrom: t, validTo: monthStart(t, 2), reason });
-    tell(ctx, inviterId, { kind: 'invite', title: `초대 보너스로 업로드 쿼터 ${fmt(want - given)}를 받았습니다`, body: '다음 달 말까지 쓸 수 있어요.', link: '/drive/quota' });
+    tell(ctx, inviterId, {
+      kind: 'invite',
+      title: `초대 보너스로 업로드 쿼터 ${fmt(want - given)}를 받았습니다`,
+      body: '다음 달 말까지 쓸 수 있어요.',
+      titleEn: `You received ${fmt(want - given)} of upload quota as an invite bonus`,
+      bodyEn: 'You can use it until the end of next month.',
+      link: '/drive/quota',
+    });
   }
 }
 
@@ -591,7 +637,15 @@ export function redeemCoupon(ctx, user, code, t = now()) {
   });
   // 유료·체험 코드는 초대 보상 대상, 무료 코드는 제외
   if (c.kind !== 'free') rewardInviter(ctx, user.id, c.days, rid, t);
-  notify(db, user.id, { kind: 'payment', title: `쿠폰으로 프리미엄 ${c.days}일이 추가되었습니다`, body: c.kind === 'trial' ? '체험 코드는 자동 결제되지 않으며 끝나기 3일 전에 알려 드려요.' : '', link: '/drive/orders?tab=coupons' });
+  const trial = c.kind === 'trial';
+  notify(db, user.id, {
+    kind: 'payment',
+    title: `쿠폰으로 프리미엄 ${c.days}일이 추가되었습니다`,
+    body: trial ? '체험 코드는 자동 결제되지 않으며 끝나기 3일 전에 알려 드려요.' : '',
+    titleEn: `${daysEn(c.days)} of Premium added with a coupon`,
+    bodyEn: trial ? "Trial codes are never charged automatically, and we'll remind you 3 days before the trial ends." : '',
+    link: '/drive/orders?tab=coupons',
+  });
   return { days: c.days, kind: c.kind, premiumUntil: until };
 }
 
@@ -620,7 +674,14 @@ export function checkin(ctx, user, t = now()) {
     db.prepare('INSERT INTO billing_checkins (user_id, day, streak, reward_days, created_at) VALUES (?,?,?,?,?)').run(user.id, today, streak, reward, t);
     if (reward) extendPremium(db, user.id, reward, t);
   });
-  if (reward) notify(db, user.id, { kind: 'checkin', title: `${streak}일 연속 출석! 프리미엄 ${reward}일을 받았습니다`, link: '/drive/orders?tab=checkin' });
+  if (reward) {
+    notify(db, user.id, {
+      kind: 'checkin',
+      title: `${streak}일 연속 출석! 프리미엄 ${reward}일을 받았습니다`,
+      titleEn: `${streak}-day check-in streak! You received ${daysEn(reward)} of Premium`,
+      link: '/drive/orders?tab=checkin',
+    });
+  }
   return { ...checkinState(db, user.id, t), rewarded: reward };
 }
 
@@ -639,12 +700,28 @@ function renewalFailed(ctx, s, t, reason) {
   const why = reason ? ` (${reason})` : '';
   if (fails >= RENEW_RETRIES) {
     db.prepare('UPDATE billing_subscriptions SET auto_renew=0 WHERE id=?').run(s.id);
-    tell(ctx, s.user_id, { kind: 'billing', email: true, title: '구독 자동 갱신을 멈췄습니다', body: `결제가 ${fails}번 실패했습니다${why}. 계속 쓰려면 결제 화면에서 다시 구독해 주세요.`, link: '/drive/payment' });
+    tell(ctx, s.user_id, {
+      kind: 'billing',
+      email: true,
+      title: '구독 자동 갱신을 멈췄습니다',
+      body: `결제가 ${fails}번 실패했습니다${why}. 계속 쓰려면 결제 화면에서 다시 구독해 주세요.`,
+      titleEn: 'Subscription auto-renewal has been stopped',
+      bodyEn: `Payment failed ${fails} times${why}. To keep using Premium, please subscribe again on the payment page.`,
+      link: '/drive/payment',
+    });
     return;
   }
   // 재시도 시각이 바뀌어도 7일 전 갱신 안내를 다시 보내지 않게 reminded_for 도 맞춘다
   db.prepare('UPDATE billing_subscriptions SET next_charge_at=?, reminded_for=? WHERE id=?').run(t + DAY, t + DAY, s.id);
-  tell(ctx, s.user_id, { kind: 'billing', email: true, title: '구독 갱신 결제에 실패했습니다', body: `결제하지 못했습니다${why}. 내일 다시 시도하며, ${RENEW_RETRIES}번 실패하면 자동 갱신이 멈춥니다. 카드 한도·유효기간을 확인해 주세요.`, link: '/drive/orders' });
+  tell(ctx, s.user_id, {
+    kind: 'billing',
+    email: true,
+    title: '구독 갱신 결제에 실패했습니다',
+    body: `결제하지 못했습니다${why}. 내일 다시 시도하며, ${RENEW_RETRIES}번 실패하면 자동 갱신이 멈춥니다. 카드 한도·유효기간을 확인해 주세요.`,
+    titleEn: 'Subscription renewal payment failed',
+    bodyEn: `We couldn't charge your card${why}. We'll try again tomorrow, and auto-renewal stops after ${RENEW_RETRIES} failed attempts. Please check your card's limit and expiry date.`,
+    link: '/drive/orders',
+  });
 }
 async function renewOne(ctx, s, t) {
   const { db, cfg } = ctx;
@@ -653,7 +730,15 @@ async function renewOne(ctx, s, t) {
   if (!testModeOf(cfg) && !card) {
     // 자동 결제 카드가 없는 운영 구독(예전 기간제 구독 등)은 갱신을 멈추고 재결제를 안내한다
     db.prepare('UPDATE billing_subscriptions SET auto_renew=0 WHERE id=?').run(s.id);
-    tell(ctx, s.user_id, { kind: 'billing', email: true, title: '구독을 자동으로 갱신하지 못했습니다', body: '등록된 자동 결제 카드가 없습니다. 결제 화면에서 다시 구독해 주세요.', link: '/drive/payment' });
+    tell(ctx, s.user_id, {
+      kind: 'billing',
+      email: true,
+      title: '구독을 자동으로 갱신하지 못했습니다',
+      body: '등록된 자동 결제 카드가 없습니다. 결제 화면에서 다시 구독해 주세요.',
+      titleEn: "Your subscription couldn't be renewed automatically",
+      bodyEn: 'There is no card registered for automatic payment. Please subscribe again on the payment page.',
+      link: '/drive/payment',
+    });
     return;
   }
   const o = createOrder(ctx, u, s.product_id, renewMethod(ctx, s), { renewalOf: s.id, t });
@@ -677,9 +762,22 @@ export async function runRenewals(ctx, t = now()) {
     const p = productById(s.product_id);
     const u = userById(db, s.user_id);
     const day = new Date(s.next_charge_at + KST).toISOString().slice(0, 10);
+    const price = p.price[tierOf(u)].toLocaleString('ko-KR');
     tell(ctx, s.user_id, testModeOf(cfg) || cardOf(db, s.user_id)
-      ? { kind: 'billing', email: true, link: '/drive/orders', title: `구독이 ${day}에 자동 갱신됩니다`, body: `${p.label} · ₩${p.price[tierOf(u)].toLocaleString('ko-KR')}이 결제됩니다. 원하지 않으면 구독 관리에서 자동 갱신을 꺼 주세요.` }
-      : { kind: 'billing', email: true, link: '/drive/payment', title: `구독 기간이 ${day}에 끝납니다`, body: '등록된 자동 결제 카드가 없어 청구되지 않아요. 계속 쓰려면 기간이 끝난 뒤 결제 화면에서 다시 구독해 주세요.' });
+      ? {
+          kind: 'billing', email: true, link: '/drive/orders',
+          title: `구독이 ${day}에 자동 갱신됩니다`,
+          body: `${p.label} · ₩${price}이 결제됩니다. 원하지 않으면 구독 관리에서 자동 갱신을 꺼 주세요.`,
+          titleEn: `Your subscription renews automatically on ${day}`,
+          bodyEn: `You will be charged ₩${price} for ${p.labelEn || p.label}. If you don't want this, turn off auto-renewal in subscription management.`,
+        }
+      : {
+          kind: 'billing', email: true, link: '/drive/payment',
+          title: `구독 기간이 ${day}에 끝납니다`,
+          body: '등록된 자동 결제 카드가 없어 청구되지 않아요. 계속 쓰려면 기간이 끝난 뒤 결제 화면에서 다시 구독해 주세요.',
+          titleEn: `Your subscription ends on ${day}`,
+          bodyEn: "You won't be charged because no card is registered for automatic payment. To keep using Premium, subscribe again on the payment page after the period ends.",
+        });
     db.prepare('UPDATE billing_subscriptions SET reminded_for=? WHERE id=?').run(s.next_charge_at, s.id);
   }
   for (const s of subs('s.next_charge_at<=?').all(t)) {
@@ -693,7 +791,15 @@ export async function runRenewals(ctx, t = now()) {
   for (const r of db.prepare("SELECT * FROM billing_coupon_redemptions WHERE kind='trial' AND reminded_at IS NULL AND ends_at>? AND ends_at<=?").all(t, t + TRIAL_REMIND_DAYS * DAY)) {
     // 그 뒤 구독·1회권으로 프리미엄이 더 길어졌으면 알리지 않는다
     if (!(userById(db, r.user_id)?.premium_until > r.ends_at)) {
-      tell(ctx, r.user_id, { kind: 'billing', email: true, title: '체험 기간이 곧 끝납니다', body: '체험 코드는 자동으로 결제되지 않아요. 계속 쓰려면 프리미엄을 구매해 주세요.', link: '/drive/payment' });
+      tell(ctx, r.user_id, {
+        kind: 'billing',
+        email: true,
+        title: '체험 기간이 곧 끝납니다',
+        body: '체험 코드는 자동으로 결제되지 않아요. 계속 쓰려면 프리미엄을 구매해 주세요.',
+        titleEn: 'Your trial ends soon',
+        bodyEn: "Trial codes aren't charged automatically. To keep using Premium, please purchase it.",
+        link: '/drive/payment',
+      });
     }
     db.prepare('UPDATE billing_coupon_redemptions SET reminded_at=? WHERE id=?').run(t, r.id);
   }
@@ -706,17 +812,46 @@ export async function runRenewals(ctx, t = now()) {
   for (const u of ending.all(t, t + RENEW_REMIND_DAYS * DAY)) {
     if (getSettings(u).expiryRemindedFor === u.premium_until) continue;
     const day = new Date(u.premium_until + KST).toISOString().slice(0, 10);
-    tell(ctx, u.id, { kind: 'expiry', email: true, title: `프리미엄이 ${day}에 끝납니다`, body: '자동으로 결제되지 않아요. 계속 쓰려면 결제 화면에서 기간을 늘려 주세요.', link: '/drive/payment' });
+    tell(ctx, u.id, {
+      kind: 'expiry',
+      email: true,
+      title: `프리미엄이 ${day}에 끝납니다`,
+      body: '자동으로 결제되지 않아요. 계속 쓰려면 결제 화면에서 기간을 늘려 주세요.',
+      titleEn: `Your Premium ends on ${day}`,
+      bodyEn: "You won't be charged automatically. To keep using Premium, extend it on the payment page.",
+      link: '/drive/payment',
+    });
     saveSettings(db, u.id, { expiryRemindedFor: u.premium_until });
   }
 }
 
+// [제목, 본문, 영어 제목, 영어 본문]
 const STAGE_MSG = {
-  1: ['프리미엄 기간이 끝났습니다', '무료 등급으로 바뀌었어요. 파일 보기와 정리는 계속할 수 있습니다.'],
-  2: ['저장공간이 무료 용량을 넘었습니다', '용량을 줄이거나 프리미엄을 다시 구매할 때까지 업로드·새 클라우드 다운로드·새 저장이 막힙니다.'],
-  3: ['온라인 재생이 중지되었습니다', '만료 후 7일이 지나 용량 초과 상태에서는 재생이 멈추고 기기 다운로드가 100KB/s로 느려집니다.'],
-  4: ['초과 파일 정리 유예 기간 안내', `초과 상태가 ${EXPIRY.overQuotaMonths}개월 지났습니다. ${EXPIRY.warnMonths}개월 안에 정리하지 않으면 초과분이 삭제됩니다.`],
-  5: ['초과 파일이 곧 삭제됩니다', `${EXPIRY.deleteWindowDays[0]}~${EXPIRY.deleteWindowDays[1]}일 안에 오래전에 수정된 파일부터 초과분을 삭제합니다. 삭제된 파일은 복구할 수 없습니다.`],
+  1: ['프리미엄 기간이 끝났습니다', '무료 등급으로 바뀌었어요. 파일 보기와 정리는 계속할 수 있습니다.', 'Your Premium has ended', "You're now on the free plan. You can still view and organize your files."],
+  2: [
+    '저장공간이 무료 용량을 넘었습니다',
+    '용량을 줄이거나 프리미엄을 다시 구매할 때까지 업로드·새 클라우드 다운로드·새 저장이 막힙니다.',
+    'Your storage is over the free limit',
+    'Uploads, new cloud downloads and new saves are blocked until you free up space or buy Premium again.',
+  ],
+  3: [
+    '온라인 재생이 중지되었습니다',
+    '만료 후 7일이 지나 용량 초과 상태에서는 재생이 멈추고 기기 다운로드가 100KB/s로 느려집니다.',
+    'Online playback has been stopped',
+    "It's been 7 days since Premium ended and you're still over the limit, so playback is stopped and device downloads are slowed to 100KB/s.",
+  ],
+  4: [
+    '초과 파일 정리 유예 기간 안내',
+    `초과 상태가 ${EXPIRY.overQuotaMonths}개월 지났습니다. ${EXPIRY.warnMonths}개월 안에 정리하지 않으면 초과분이 삭제됩니다.`,
+    'Grace period for cleaning up excess files',
+    `You've been over the limit for ${EXPIRY.overQuotaMonths} months. If you don't clean up within ${EXPIRY.warnMonths} months, the excess will be deleted.`,
+  ],
+  5: [
+    '초과 파일이 곧 삭제됩니다',
+    `${EXPIRY.deleteWindowDays[0]}~${EXPIRY.deleteWindowDays[1]}일 안에 오래전에 수정된 파일부터 초과분을 삭제합니다. 삭제된 파일은 복구할 수 없습니다.`,
+    'Excess files will be deleted soon',
+    `Within ${EXPIRY.deleteWindowDays[0]}–${EXPIRY.deleteWindowDays[1]} days, the excess will be deleted, starting with the files modified longest ago. Deleted files can't be recovered.`,
+  ],
 };
 // 만료 처리(8-6)와 추가 저장공간 만료. 하루 한 번
 export async function runExpiry(ctx, t = now()) {
@@ -760,7 +895,15 @@ export async function runExpiry(ctx, t = now()) {
       }
       used = usage(db, u.id);
       audit(db, { userId: u.id, action: 'billing.expiry_delete', detail: { cap, used } });
-      tell(ctx, u.id, { kind: 'expiry', email: true, title: '초과 파일을 삭제했습니다', body: '무료 용량을 넘은 파일을 오래전에 수정된 것부터 삭제했습니다.', link: '/drive/all' });
+      tell(ctx, u.id, {
+        kind: 'expiry',
+        email: true,
+        title: '초과 파일을 삭제했습니다',
+        body: '무료 용량을 넘은 파일을 오래전에 수정된 것부터 삭제했습니다.',
+        titleEn: 'Excess files were deleted',
+        bodyEn: 'Files over the free storage limit were deleted, starting with the ones modified longest ago.',
+        link: '/drive/all',
+      });
       if (used <= cap) overSince = null;
       stage = stageOf();
     }
@@ -769,8 +912,8 @@ export async function runExpiry(ctx, t = now()) {
     if (stage > (s.expiryStage || 0)) {
       // 처음 알릴 때 이미 용량 초과(2단계 이상)여도 만료 안내(1단계)부터 보낸다
       for (const k of s.expiryStage || stage === 1 ? [stage] : [1, stage]) {
-        const [title, body] = STAGE_MSG[k];
-        tell(ctx, u.id, { kind: 'expiry', email: true, title, body, link: k >= 2 ? '/drive/payment' : '/pricing' });
+        const [title, body, titleEn, bodyEn] = STAGE_MSG[k];
+        tell(ctx, u.id, { kind: 'expiry', email: true, title, body, titleEn, bodyEn, link: k >= 2 ? '/drive/payment' : '/pricing' });
       }
     }
     saveSettings(db, u.id, patch);
@@ -1067,7 +1210,15 @@ export function register(app, ctx) {
       revokeOrder(ctx, o, t);
     });
     audit(db, { userId: req.user.id, action: 'billing.refund', detail: { orderId: o.id, amount: o.amount }, ip: req.ip });
-    tell(ctx, o.user_id, { kind: 'payment', email: true, title: '환불이 처리되었습니다', body: `₩${o.amount.toLocaleString('ko-KR')} 환불과 함께 남은 혜택 기간이 회수되었습니다.`, link: '/drive/orders?tab=orders' });
+    tell(ctx, o.user_id, {
+      kind: 'payment',
+      email: true,
+      title: '환불이 처리되었습니다',
+      body: `₩${o.amount.toLocaleString('ko-KR')} 환불과 함께 남은 혜택 기간이 회수되었습니다.`,
+      titleEn: 'Your refund has been processed',
+      bodyEn: `₩${o.amount.toLocaleString('en-US')} was refunded and the remaining benefit period was taken back.`,
+      link: '/drive/orders?tab=orders',
+    });
     res.json({ ok: true, order: orderApi(db.prepare('SELECT * FROM billing_orders WHERE id=?').get(o.id)) });
   });
   app.get(`${A}/stats`, requireAdmin, (_req, res) => {
@@ -1124,7 +1275,15 @@ export function register(app, ctx) {
     const a = db.prepare('SELECT * FROM billing_pro_applications WHERE id=?').get(req.params.id) || fail(404, 'not_found', '신청을 찾을 수 없습니다');
     const note = str(req.body?.note, 1000) || null;
     db.prepare('UPDATE billing_pro_applications SET status=?, note=?, decided_at=? WHERE id=?').run(status, note, now(), a.id);
-    tell(ctx, a.user_id, { kind: 'invite', email: true, title: status === 'approved' ? '추천 보상 Pro 신청이 승인되었습니다' : '추천 보상 Pro 신청 결과 안내', body: note || '', link: '/drive/invite' });
+    const ok = status === 'approved';
+    tell(ctx, a.user_id, {
+      kind: 'invite',
+      email: true,
+      title: ok ? '추천 보상 Pro 신청이 승인되었습니다' : '추천 보상 Pro 신청 결과 안내',
+      titleEn: ok ? 'Your Referral Pro application was approved' : 'Result of your Referral Pro application',
+      body: note || '', // 관리자가 적은 메모라 영어 본문은 따로 없다(영어 화면에도 이 메모가 보인다)
+      link: '/drive/invite',
+    });
     res.json({ ok: true, status });
   });
 }

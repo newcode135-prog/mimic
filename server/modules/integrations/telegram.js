@@ -112,7 +112,14 @@ export function registerTelegram(app, ctx) {
     // 연결 앱 목록에 보이고 거기서 해제할 수 있도록 토큰 기록을 남긴다(원문은 버림)
     const { id } = createToken(db, row.user_id, { name: `텔레그램 ${tgId}`, scopes: ['files:write', 'services'], appId: 'telegram', days: 365 });
     db.prepare('INSERT INTO integrations_telegram (user_id, telegram_user_id, chat_id, token_id, created_at) VALUES (?,?,?,?,?)').run(row.user_id, tgId, chatId == null ? null : String(chatId), id, now());
-    notify(db, row.user_id, { kind: 'telegram', title: '텔레그램 봇이 연결되었습니다', body: '봇에게 보낸 링크와 파일이 미믹 드라이브에 저장됩니다.', link: '/drive/settings/integrations' });
+    notify(db, row.user_id, {
+      kind: 'telegram',
+      title: '텔레그램 봇이 연결되었습니다',
+      body: '봇에게 보낸 링크와 파일이 미믹 드라이브에 저장됩니다.',
+      titleEn: 'Telegram bot connected',
+      bodyEn: 'Links and files you send to the bot will be saved to your Mimic drive.',
+      link: '/drive/settings/integrations',
+    });
     res.json({ ok: true, account: maskAccount(db.prepare('SELECT email, phone FROM users WHERE id=?').get(row.user_id)) });
   });
   app.post('/api/integrations/telegram/unbind', botOnly, (req, res) => {

@@ -298,7 +298,7 @@ test('media: 재생·자막·썸네일·외부 플레이어·시청 기록·압�
     const { url } = r.body;
     assert.equal(r.body.potplayer, `potplayer://${url}`);
     assert.equal(r.body.vlc, `vlc://${url}`);
-    assert.equal(r.body.mimic, `mimic://play?url=${encodeURIComponent(url)}`);
+    assert.equal(r.body.mimic, `mimic://play?id=${a1.id}&url=${encodeURIComponent(url)}`);
     assert.ok(r.body.expiresAt - Date.now() > 5.9 * 3600_000);
     const res = await fetch(url, { headers: { range: 'bytes=0-9' } });
     assert.equal(res.status, 206);

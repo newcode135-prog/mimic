@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -37,6 +39,14 @@ export function loadConfig(overrides = {}) {
     // 운영 모드 발송 대행사(H-01): JSON POST { from, to, subject, text } + Authorization: Bearer <KEY>
     mail: { api: env.MIMIC_EMAIL_API, key: env.MIMIC_EMAIL_API_KEY, from: env.MIMIC_EMAIL_FROM },
     sms: { api: env.MIMIC_SMS_API, key: env.MIMIC_SMS_API_KEY, from: env.MIMIC_SMS_FROM },
+    // Android TWA 앱 링크(K-09, /.well-known/assetlinks.json): 패키지 이름과 서명 인증서 SHA-256 지문(쉼표로 여러 개).
+    // apksigner 는 콜론 없이 64자로 출력하므로 Digital Asset Links 형식(AA:BB:…)으로 맞추고, 길이가 틀리면 시작 거부(앱 링크 검증이 조용히 실패함)
+    androidPackage: env.MIMIC_ANDROID_PACKAGE?.trim() || undefined,
+    androidSha256: (env.MIMIC_ANDROID_SHA256 || '').split(',').filter((s) => s.trim()).map((s) => {
+      const hex = s.replace(/[\s:]/g, '').toUpperCase();
+      if (!/^[0-9A-F]{64}$/.test(hex)) throw new Error(`MIMIC_ANDROID_SHA256 의 지문이 SHA-256(16진수 64자)이 아닙니다: ${s.trim()}`);
+      return hex.match(/../g).join(':');
+    }),
     ...overrides,
   };
   // 운영 모드에서 공개된 기본 비밀값이면 다운로드·공유 링크를 누구나 위조할 수 있다(B-04) → 시작 거부
@@ -50,4 +60,25 @@ export function loadConfig(overrides = {}) {
     if (!cfg.countryHeader) console.warn('[config] MIMIC_COUNTRY_HEADER(예: cf-ipcountry)가 없어 지역 판정이 브라우저 언어로만 됩니다. 국가별 가입·다운로드 제한을 언어만 바꿔 우회할 수 있습니다');
   }
   return cfg;
+}
+
+// 웹 푸시 VAPID 키(K-05, RFC 8292): 공개키는 P-256 비압축 점 65바이트, 비밀키는 d 32바이트(둘 다 base64url).
+// 환경변수(MIMIC_VAPID_PUBLIC_KEY·MIMIC_VAPID_PRIVATE_KEY)가 없으면 처음 쓸 때 만들어 데이터 폴더 vapid.json 에 두고 계속 쓴다
+export function vapidKeys(cfg) {
+  if (cfg.vapid) return cfg.vapid;
+  const env = process.env;
+  const subject = env.MIMIC_VAPID_SUBJECT || `mailto:${cfg.supportEmail}`;
+  if (env.MIMIC_VAPID_PUBLIC_KEY || env.MIMIC_VAPID_PRIVATE_KEY) {
+    if (!env.MIMIC_VAPID_PUBLIC_KEY || !env.MIMIC_VAPID_PRIVATE_KEY) throw new Error('MIMIC_VAPID_PUBLIC_KEY 와 MIMIC_VAPID_PRIVATE_KEY 는 함께 설정해야 합니다');
+    return (cfg.vapid = { publicKey: env.MIMIC_VAPID_PUBLIC_KEY, privateKey: env.MIMIC_VAPID_PRIVATE_KEY, subject });
+  }
+  const file = path.join(cfg.dataDir, 'vapid.json');
+  if (!fs.existsSync(file)) {
+    const j = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey.export({ format: 'jwk' });
+    const publicKey = Buffer.concat([Buffer.from([4]), Buffer.from(j.x, 'base64url'), Buffer.from(j.y, 'base64url')]).toString('base64url');
+    fs.mkdirSync(cfg.dataDir, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ publicKey, privateKey: j.d }), { mode: 0o600 });
+  }
+  const { publicKey, privateKey } = JSON.parse(fs.readFileSync(file, 'utf8'));
+  return (cfg.vapid = { publicKey, privateKey, subject });
 }

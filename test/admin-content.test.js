@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -420,7 +421,7 @@ test('admin-content: 관리자·신고·알림·콘텐츠', async (t) => {
     const v = createUser(s.db);
     const V = client(s.url, sessionFor(s.db, v.id));
     assert.ok('publicKey' in (await V.get('/api/notifications/push/key')).body);
-    const sub = { endpoint: 'https://push.example.com/abc', keys: { p256dh: 'B'.repeat(87), auth: 'a'.repeat(22) } };
+    const sub = { endpoint: 'https://push.example.com/abc', keys: { p256dh: crypto.createECDH('prime256v1').generateKeys('base64url'), auth: crypto.randomBytes(16).toString('base64url') } };
     assert.equal((await anon.post('/api/notifications/push-subscriptions', sub)).status, 401);
     assert.equal((await V.post('/api/notifications/push-subscriptions', { ...sub, endpoint: 'http://push.example.com/x' })).status, 400);
     assert.equal((await V.post('/api/notifications/push-subscriptions', { ...sub, keys: { p256dh: 'x', auth: 'y' } })).status, 400);

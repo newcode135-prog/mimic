@@ -1,6 +1,7 @@
-// 앱 다운로드(K-02·K-09): /apps 전체, /apps/:platform(mobile|desktop|tv|extension|cli). 설치 파일이 아직 없으면 "출시 예정"
-import { h, icon, t, toast } from '/ui.js';
+// 앱 다운로드(K-02·K-09): /apps 전체, /apps/:platform(mobile|desktop|tv|extension|cli). 설치 파일이 아직 없으면 "준비 중"
+import { bus, h, icon, t, toast } from '/ui.js';
 import { setup } from '/pages/help.js';
+import { installState, promptInstall, iosHint } from '/pwa.js';
 
 const SOON = 'soon';
 const PLATFORMS = {
@@ -8,6 +9,7 @@ const PLATFORMS = {
     icon: 'phone',
     title: ['모바일 앱', 'Mobile apps'],
     lead: ['휴대폰에서 링크를 넣고, 받은 영상을 이동 중에 바로 보세요.', 'Add links and watch on the go.'],
+    pwa: true,
     features: [
       ['링크·토렌트 추가와 전송 현황', 'Add links and track transfers'],
       ['원본 화질 재생(프리미엄), HDR 재생', 'Original quality and HDR playback'],
@@ -27,6 +29,7 @@ const PLATFORMS = {
     icon: 'desktop',
     title: ['데스크톱 앱', 'Desktop apps'],
     lead: ['큰 화면에서 정리하고, 외부 플레이어로 바로 여세요.', 'Organize on a big screen and open in your favorite player.'],
+    pwa: true,
     features: [
       ['클라우드 다운로드와 대용량 업로드', 'Cloud download and large uploads'],
       ['미믹 플레이어·VLC·PotPlayer로 열기', 'Open in Mimic player, VLC or PotPlayer'],
@@ -92,10 +95,16 @@ const PLATFORMS = {
     builds: [
       ['macOS·Linux 설치 스크립트', 'curl 한 줄 설치 · Node.js 20 이상', 'One-line curl install · Node.js 20+', '/api/integrations/cli/install.sh'],
       ['Windows', 'PowerShell 설치 · Node.js 20 이상', 'PowerShell install · Node.js 20+', '/api/integrations/cli/install.ps1'],
-      ['Homebrew', 'brew install', 'brew install', SOON],
-      ['npx', 'Node.js 20 이상', 'Node.js 20+', SOON],
+      ['Homebrew', 'macOS·Linux 공식(formula)', 'Formula for macOS·Linux', '/api/integrations/cli/mimic.rb'],
+      ['npx', '설치 없이 실행 · Node.js 20 이상', 'Run without installing · Node.js 20+', '/api/integrations/cli/mimic-cli.tgz'],
     ],
-    install: [`curl -fsSL ${location.origin}/api/integrations/cli/install.sh | sh`, `irm ${location.origin}/api/integrations/cli/install.ps1 | iex`],
+    install: [
+      ['macOS·Linux', 'macOS·Linux', `curl -fsSL ${location.origin}/api/integrations/cli/install.sh | sh`],
+      ['Windows (PowerShell)', 'Windows (PowerShell)', `irm ${location.origin}/api/integrations/cli/install.ps1 | iex`],
+      ['npx (설치 없이)', 'npx (no install)', `npx -y ${location.origin}/api/integrations/cli/mimic-cli.tgz auth login`],
+      // Homebrew 는 탭 안의 공식만 설치하므로 로컬 탭에 공식을 받아 설치한다(cli/README.md 와 같은 순서)
+      ['Homebrew', 'Homebrew', `brew tap-new --no-git mimic/local; F="$(brew --repository mimic/local)/Formula"; mkdir -p "$F" && curl -fsSL ${location.origin}/api/integrations/cli/mimic.rb -o "$F/mimic.rb" && brew install mimic/local/mimic`],
+    ],
     commands: ['mimic auth login', 'mimic ls', 'mimic upload ./video.mp4', 'mimic offline add "magnet:?xt=urn:btih:…"', 'mimic share <파일ID> --days 7', 'mimic skill install'],
   },
 };
@@ -108,15 +117,41 @@ const codeLine = (text) =>
     h('button', { class: 'btn ghost sm', type: 'button', onclick: () => navigator.clipboard?.writeText(text).then(() => toast(t('복사했어요', 'Copied'), 'ok')) }, t('복사', 'Copy')),
   );
 
+const soonBadge = () => h('span', { class: 'badge accent' }, t('준비 중', 'Coming soon'));
+
 function buildCard([name, ko, en, status]) {
-  const btn =
-    status === SOON
-      ? h('span', { class: 'badge accent' }, t('출시 예정', 'Coming soon'))
-      : h('a', { class: 'btn primary sm', href: status, download: '' }, h('span', { html: icon('download') }), t('내려받기', 'Download'));
+  const btn = status === SOON ? soonBadge() : h('a', { class: 'btn primary sm', href: status, download: '' }, h('span', { html: icon('download') }), t('내려받기', 'Download'));
   const card = h('div', { class: 'card' }, h('b', {}, name), h('span', { class: 'muted small' }, t(ko, en)), h('div', {}, btn));
-  // 설치 파일이 서버에 실제로 있는지 확인하고, 없으면 출시 예정으로 바꾼다
-  if (status !== SOON) fetch(status, { method: 'HEAD' }).then((r) => !r.ok && btn.replaceWith(h('span', { class: 'badge accent' }, t('출시 예정', 'Coming soon')))).catch(() => {});
+  // 설치 파일이 서버에 실제로 있는지 확인하고, 없으면 준비 중으로 바꾼다
+  if (status !== SOON) fetch(status, { method: 'HEAD' }).then((r) => !r.ok && btn.replaceWith(soonBadge())).catch(() => {});
   return card;
+}
+
+// 웹 앱(PWA) 설치 카드: 이 브라우저가 설치 창을 띄울 수 있으면 버튼, 아니면 지금 상태를 알려 준다
+function webAppCard() {
+  const card = h('div', { class: 'card' });
+  const draw = (state = installState()) => {
+    const install = async () => (await promptInstall()) === 'accepted' && toast(t('미믹 앱을 설치했어요', 'Mimic app installed'), 'ok');
+    const note = {
+      ready: t('홈 화면·바탕 화면에서 앱처럼 바로 열려요.', 'Opens like an app from your home screen or desktop.'),
+      installed: t('이 기기에 미믹 앱이 설치되어 있어요.', 'Mimic is installed on this device.'),
+      ios: iosHint(),
+      // 설치 창을 닫은 뒤에도(Chrome·Edge 는 새로 고침 전까지 다시 띄울 수 없음) 맞는 안내
+      unavailable: t(
+        '지금은 이 화면에서 설치 창을 띄울 수 없어요. 브라우저 메뉴의 "앱 설치"·"홈 화면에 추가"를 쓰거나 새로 고침 후 다시 해 보세요. Android·PC 는 Chrome·Edge, iPhone 은 Safari 에서 설치할 수 있어요. 이미 설치했다면 설치된 앱을 여세요.',
+        "Can't open the install prompt here right now. Use Install app or Add to Home screen in the browser menu, or reload and try again. Installs work in Chrome or Edge on Android/PC and Safari on iPhone. Already installed? Open the app.",
+      ),
+    }[state];
+    const action =
+      state === 'ready'
+        ? h('button', { class: 'btn primary sm', type: 'button', onclick: install }, h('span', { html: icon('download') }), t('웹 앱 설치', 'Install web app'))
+        : state === 'installed'
+          ? h('span', { class: 'badge brand' }, t('설치됨', 'Installed'))
+          : null;
+    card.replaceChildren(h('b', {}, t('웹 앱', 'Web app')), h('span', { class: 'muted small' }, note), ...(action ? [h('div', {}, action)] : []));
+  };
+  draw();
+  return { card, draw };
 }
 
 export async function render(root, ctx) {
@@ -145,6 +180,7 @@ export async function render(root, ctx) {
   const p = PLATFORMS[key];
   if (!p) return root.replaceChildren(h('div', { class: 'empty' }, h('h2', {}, t('없는 플랫폼이에요', 'Unknown platform')), h('a', { href: '/apps' }, t('앱 목록으로', 'All apps'))));
   document.title = `${t(...p.title)} — ${t('미믹', 'Mimic')}`;
+  const web = p.pwa ? webAppCard() : null;
 
   root.replaceChildren(
     h('div', { class: 'mc-page-title' }, h('div', { class: 'ic', style: { margin: '0 auto 12px', width: '56px', height: '56px', borderRadius: '16px', display: 'grid', placeItems: 'center', background: 'var(--brand-soft)', color: 'var(--brand-strong)' }, html: icon(p.icon, 'lg') }), h('h1', {}, t(...p.title)), h('p', { class: 'mc-lead', style: { margin: '0 auto' } }, t(...p.lead))),
@@ -153,14 +189,14 @@ export async function render(root, ctx) {
       { class: 'container' },
       pills,
       h('h2', {}, t('설치', 'Install')),
-      h('div', { class: 'mc-req' }, ...p.builds.map(buildCard)),
+      h('div', { class: 'mc-req' }, web?.card, ...p.builds.map(buildCard)),
       p.now ? h('div', { class: 'mc-note brand', style: { marginTop: '16px' }, html: icon('info') }, h('div', {}, t(...p.now), p.action ? [' ', h('a', { href: p.action[0] }, t(...p.action[1]))] : null)) : null,
       p.steps ? [h('h2', { style: { marginTop: '32px' } }, t('설치 방법', 'How to install')), h('ol', { class: 'doc' }, ...p.steps.map((s) => h('li', {}, t(...s))))] : null,
       p.install
         ? [
             h('h2', { style: { marginTop: '32px' } }, t('설치 명령', 'Install command')),
-            h('p', { class: 'muted' }, t('macOS·Linux 는 터미널, Windows 는 PowerShell 에 붙여 넣으세요. 이 서버 주소가 미리 들어 있어요.', 'Paste into Terminal (macOS·Linux) or PowerShell (Windows). This server address is built in.')),
-            h('div', { class: 'col' }, ...p.install.map(codeLine)),
+            h('p', { class: 'muted' }, t('환경에 맞는 명령 하나를 터미널(Windows 는 PowerShell)에 붙여 넣으세요. 이 서버 주소가 미리 들어 있어요.', 'Paste one command into your terminal (PowerShell on Windows). This server address is built in.')),
+            h('div', { class: 'col' }, ...p.install.map(([ko, en, cmd]) => [h('span', { class: 'muted small' }, t(ko, en)), codeLine(cmd)])),
           ]
         : null,
       p.commands
@@ -178,4 +214,5 @@ export async function render(root, ctx) {
       h('ul', { class: 'doc' }, ...p.features.map((f) => h('li', {}, t(...f)))),
     ),
   );
+  return web && bus.on('pwa:install', web.draw); // 설치 가능·설치됨으로 바뀌면 카드를 다시 그림(화면을 떠나면 해제)
 }
