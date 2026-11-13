@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Caddy(HTTPS 인증서 자동 발급 + 127.0.0.1 미믹 서버로 전달). macOS 는 일반 사용자도 80·443 을 열 수 있어 root 로 돌리지 않는다 -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mimic.caddy</string>
+  <key>UserName</key>
+  <string>__USER__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__CADDY__</string>
+    <string>run</string>
+    <string>--config</string>
+    <string>__CADDYFILE__</string>
+    <string>--adapter</string>
+    <string>caddyfile</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>__DATA__/logs/caddy.log</string>
+  <key>StandardErrorPath</key>
+  <string>__DATA__/logs/caddy.log</string>
+</dict>
+</plist>

@@ -155,10 +155,13 @@ export async function createApp(overrides = {}) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const inst = await createApp();
-  const server = inst.app.listen(inst.cfg.port, () => {
+  // 운영에서는 같은 컴퓨터의 Caddy(HTTPS)만 들어오게 127.0.0.1 에서만 받는다. 다른 구성이면 MIMIC_HOST=0.0.0.0
+  const host = process.env.MIMIC_HOST || (inst.cfg.dev ? undefined : '127.0.0.1');
+  const server = inst.app.listen(inst.cfg.port, host, () => {
     console.log(`미믹 서버 실행 중: ${inst.cfg.baseUrl} (데이터: ${inst.cfg.dataDir})`);
     if (inst.ctx.failedModules.length) console.log(`불러오지 못한 모듈: ${inst.ctx.failedModules.join(', ')}`);
   });
+  server.requestTimeout = 0; // 큰 파일 업로드·긴 영상 스트리밍이 5분(Node 기본값)에 끊기지 않게. 헤더 대기 시간 제한은 그대로
   inst.ctx.server = server;
   if (inst.cfg.runJobs) inst.startJobs();
   const stop = async () => {

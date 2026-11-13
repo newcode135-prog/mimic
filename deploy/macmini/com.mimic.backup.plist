@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 미믹 매일 백업(04:30). 잠자기 중 놓친 실행은 깨어난 뒤 한 번 하지만, 전원이 꺼져 있던 날은 건너뛴다(check.sh 가 26시간 넘으면 알림) -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mimic.backup</string>
+  <key>UserName</key>
+  <string>__USER__</string>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__REPO__/deploy/macmini/backup.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>4</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__DATA__/logs/backup.log</string>
+  <key>StandardErrorPath</key>
+  <string>__DATA__/logs/backup.log</string>
+</dict>
+</plist>

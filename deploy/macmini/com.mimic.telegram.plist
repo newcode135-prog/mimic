@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 미믹 텔레그램 봇(서버와 별도 프로세스). .env 에 TELEGRAM_BOT_TOKEN·MIMIC_BOT_SECRET 이 있을 때만 setup.sh 가 설치한다 -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mimic.telegram</string>
+  <key>UserName</key>
+  <string>__USER__</string>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>--env-file=__REPO__/.env</string>
+    <string>tools/telegram-bot/bot.js</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>MIMIC_SERVER</key>
+    <string>http://127.0.0.1:__PORT__</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>__DATA__/logs/telegram.log</string>
+  <key>StandardErrorPath</key>
+  <string>__DATA__/logs/telegram.err.log</string>
+</dict>
+</plist>

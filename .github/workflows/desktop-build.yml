@@ -1,0 +1,96 @@
+# 데스크톱 설치 파일(K-09): Windows exe(10·11 x64·ia32 + 구버전 7·8) · macOS dmg(arm64·x64)
+# 실행: Actions → "데스크톱 빌드" → Run workflow, 또는 desktop-v* 태그 push(초안 릴리스까지 만든다)
+# 서명: 저장소 secrets 가 있으면 서명, 없으면 서명 없이 빌드한다(desktop/README.md)
+name: 데스크톱 빌드
+on:
+  workflow_dispatch:
+  push:
+    tags: ['desktop-v*']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: 태그와 package.json 버전 확인
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          v="desktop-v$(node -p "require('./package.json').version")"
+          [ "$v" = "$GITHUB_REF_NAME" ] || { echo "::error::태그 $GITHUB_REF_NAME 와 package.json 버전($v)이 다릅니다"; exit 1; }
+      - run: npm install --no-audit --no-fund
+      - name: Windows 10·11 (x64·ia32) + 구버전 7·8 (Electron 22)
+        env:
+          # 비어 있으면 electron-builder 가 서명을 건너뛴다
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          npm run dist:win
+          npm run dist:win-legacy
+          # 파일 이름이 같으므로 -legacy 를 붙여 한곳에 모은다
+          for f in dist/legacy/*.exe; do mv "$f" "dist/$(basename "$f" .exe)-legacy.exe"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mimic-windows
+          path: desktop/dist/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --no-audit --no-fund
+      - name: macOS dmg (arm64·x64)
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$MAC_CSC_LINK" ]; then
+            CSC_LINK="$MAC_CSC_LINK" CSC_KEY_PASSWORD="$MAC_CSC_KEY_PASSWORD" npm run dist:mac
+          else
+            # 인증서가 없으면 ad-hoc 서명(-)만: 서명이 아예 없으면 Apple 칩 Mac 이 "손상된 앱"으로 막는다
+            npm run dist:mac -- --config.mac.identity=-
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mimic-macos
+          path: desktop/dist/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: 초안 릴리스
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" out/*
+          --repo "$GITHUB_REPOSITORY" --draft
+          --title "미믹 데스크톱 ${GITHUB_REF_NAME#desktop-v}"
+          --notes "설치 방법·서명 안내: desktop/README.md"

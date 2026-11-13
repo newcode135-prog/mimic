@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 미믹 서버. setup.sh 가 __이름__ 을 채워 /Library/LaunchDaemons 에 넣는다(로그인 없이 부팅 때 시작, 죽으면 10초 뒤 다시 시작) -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mimic.server</string>
+  <key>UserName</key>
+  <string>__USER__</string>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>--env-file=__REPO__/.env</string>
+    <string>server/index.js</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>__DATA__/logs/server.log</string>
+  <key>StandardErrorPath</key>
+  <string>__DATA__/logs/server.err.log</string>
+</dict>
+</plist>

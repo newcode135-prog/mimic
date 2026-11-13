@@ -132,17 +132,17 @@
     { "id": "K-09", "area": "K", "module": "platforms", "priority": "P1", "verification": "앱 소개", "status": "partial", "note": "데스크톱·모바일 설치 파일은 아직 빌드·서명 전", "title": "플랫폼별 설치본", "rule": "Windows(10·11, 구버전 별도), macOS(Apple 칩·Intel), Android(APK·Google Play·Galaxy Store), TV 전용 APK" }
   ],
   "decisions": [
-    { "id": "Q-1", "title": "토렌트 기능의 국내 법적 분류", "detail": "공유 기능과 결합 시 특수유형 부가통신사업자(웹하드) 등록·기술적 필터링 의무 대상인지 변호사 검토. A-01·A-02·D-* 범위에 영향" },
-    { "id": "Q-2", "title": "서비스 지역(국내 전용 / 글로벌)", "detail": "글로벌이면 글로벌·지역 프리미엄 2등급, 다국어, 해외결제 필요" },
-    { "id": "Q-3", "title": "실제 판매 가격(원화)", "detail": "플랜 문서 8-3의 PikPak 가격은 참고값. 원화 고정가 권장" },
-    { "id": "Q-4", "title": "PG사와 결제수단 범위", "detail": "토스페이먼츠 / 포트원, 암호화폐·Alipay·UnionPay 포함 여부" },
-    { "id": "Q-5", "title": "맥미니 단계의 용량 정책", "detail": "맥미니 1대로는 프리미엄 1인당 10TB 불가. 베타 한도를 server/core/plans.js 값으로 정함" },
-    { "id": "Q-6", "title": "토렌트 시딩 정책", "detail": "\"우리 클라우드 안에만\" 원칙: 다운로드 중 업로드 제한·완료 즉시 시딩 중지 여부(속도와 상충)" },
-    { "id": "Q-7", "title": "도메인·사업자 정보", "detail": "통신판매업 신고, 개인정보처리방침 기재 정보" },
-    { "id": "Q-8", "title": "상표 \"미믹/Mimic\" 조사", "detail": "KIPRIS 선등록 상표 검색 후 출원" },
-    { "id": "Q-9", "title": "\"A와 B의 중간\" 디자인 해석 확인", "detail": "현재 해석: 메뉴 구성·흐름·정책 수치는 PikPak과 같게, 로고·색·아이콘·문구·약관은 미믹 고유. 사용자 확인 대기" },
-    { "id": "Q-10", "title": "프리미엄 만료 뒤 금고 데이터 처리", "detail": "금고는 프리미엄 전용이라 만료되면 열거나 꺼낼 수 없음. 단계적 삭제 / 별도 보관 기간·사전 알림 중 선택 필요(삭제는 되돌릴 수 없음). 정해지면 billing runExpiry 에 금고 단계를 따로 넣는다" },
-    { "id": "Q-11", "title": "토스 자동 결제(빌링키) 저장 방식", "detail": "구독 자동 갱신용 빌링키를 서버 암호화 키로 암호화 저장할지 결정(규약 0-7 은 비밀 값을 해시로만 저장). 토스 빌링 계약과 함께 결정" }
+    { "id": "Q-1", "title": "토렌트 기능의 국내 법적 분류", "detail": "공유 기능과 결합 시 특수유형 부가통신사업자(웹하드) 등록·기술적 필터링 의무 대상인지 변호사 검토. A-01·A-02·D-* 범위에 영향", "status": "decided", "answer": "검토 없이 진행(2026-11-13 사용자 결정). 신고·저작권 차단·필터링 기능은 갖춤. 등록 의무 대상이면 과태료 위험이 있음을 알림" },
+    { "id": "Q-2", "title": "서비스 지역(국내 전용 / 글로벌)", "detail": "글로벌이면 글로벌·지역 프리미엄 2등급, 다국어, 해외결제 필요", "status": "decided", "answer": "국내와 해외 모두 서비스. 한국은 원화(KRW), 해외는 미국 달러(USD)" },
+    { "id": "Q-3", "title": "실제 판매 가격(원화)", "detail": "플랜 문서 8-3의 PikPak 가격은 참고값. 원화 고정가 권장", "status": "decided", "answer": "PikPak 가격과 같게. 2026-11-13 PikPak 한국 원화 표시가를 기준가로, 해외는 매일 환율로 달러 환산(PikPak도 싱가포르 달러 환산·환율 변동)" },
+    { "id": "Q-4", "title": "PG사와 결제수단 범위", "detail": "토스페이먼츠 / 포트원, 암호화폐·Alipay·UnionPay 포함 여부", "status": "decided", "answer": "국내·해외 모두. 토스페이먼츠 하나로: 국내 카드·간편결제 + 해외 카드(Visa·Master·JCB·UnionPay·AMEX) + 해외간편결제(PayPal·Alipay, USD). 해외는 통화별 별도 MID 계약 필요" },
+    { "id": "Q-5", "title": "맥미니 단계의 용량 정책", "detail": "맥미니 1대로는 프리미엄 1인당 10TB 불가. 베타 한도를 server/core/plans.js 값으로 정함", "status": "decided", "answer": "화면·약관은 10TB 그대로. 데이터 디스크 80% 이상이면 관리자 경보 + 신규 가입 일시 중지, 75% 아래로 내려가면 자동 재개" },
+    { "id": "Q-6", "title": "토렌트 시딩 정책", "detail": "\"우리 클라우드 안에만\" 원칙: 다운로드 중 업로드 제한·완료 즉시 시딩 중지 여부(속도와 상충)", "status": "decided", "answer": "일반 토렌트처럼 계속 시딩(완료 뒤에도). 디스크 중복 없이 하드링크로 시딩, 업로드 속도·동시 시딩 수 상한은 환경변수" },
+    { "id": "Q-7", "title": "도메인·사업자 정보", "detail": "통신판매업 신고, 개인정보처리방침 기재 정보", "status": "open", "answer": "도메인 미정. 비어 있는 후보(2026-11-13 확인): mimic.cloud, mimicdrive.com, mimicdrive.co.kr. 사업자 정보도 미정" },
+    { "id": "Q-8", "title": "상표 \"미믹/Mimic\" 조사", "detail": "KIPRIS 선등록 상표 검색 후 출원", "status": "decided", "answer": "KIPRIS 조사(2026-11-13): 한글 \"미믹\"은 09·38·42류 등록 없음. 영문 \"MIMIC\" 단독은 09류 등록(Mimic Technologies, 국제등록 1132223), \"MIMIC US\" 42류, \"아이미믹/imimic\" 09·38류 등록 있음 → 한글 \"미믹\" + 로고로 09·38·42류 출원 권장" },
+    { "id": "Q-9", "title": "\"A와 B의 중간\" 디자인 해석 확인", "detail": "현재 해석: 메뉴 구성·흐름·정책 수치는 PikPak과 같게, 로고·색·아이콘·문구·약관은 미믹 고유. 사용자 확인 대기", "status": "decided", "answer": "해석 확정: 기능·메뉴·흐름·가격·수치는 PikPak과 같게, 로고·색·아이콘·문구·약관은 미믹 고유" },
+    { "id": "Q-10", "title": "프리미엄 만료 뒤 금고 데이터 처리", "detail": "금고는 프리미엄 전용이라 만료되면 열거나 꺼낼 수 없음. 단계적 삭제 / 별도 보관 기간·사전 알림 중 선택 필요(삭제는 되돌릴 수 없음). 정해지면 billing runExpiry 에 금고 단계를 따로 넣는다", "status": "decided", "answer": "지우지 않고 계속 보관(만료 뒤에는 열 수 없고 다시 프리미엄이 되면 열림). 초과분 삭제 단계에서 금고는 제외" },
+    { "id": "Q-11", "title": "토스 자동 결제(빌링키) 저장 방식", "detail": "구독 자동 갱신용 빌링키를 서버 암호화 키로 암호화 저장할지 결정(규약 0-7 은 비밀 값을 해시로만 저장). 토스 빌링 계약과 함께 결정", "status": "decided", "answer": "서버 비밀키(MIMIC_SECRET)에서 만든 키로 AES-256-GCM 암호화해 저장, 결제할 때만 복호화" }
   ],
   "tasks": [
     { "id": "T-1", "status": "done", "module": "core", "milestone": "M0", "title": "공통 뼈대 완성", "detail": "작성됨: config.js, db.js, schema.sql. 남음: auth.js, storage.js, files.js, plans.js, quota.js, notify.js, server/index.js(모듈 자동 등록), 웹 화면 틀(index.html·app.js·ui.js·styles.css·layout.js), test/helpers.js" },

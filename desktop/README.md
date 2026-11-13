@@ -19,7 +19,37 @@
 3. 트레이 → "서버 주소 바꾸기…" → 열린 `config.json` 의 `serverUrl` 수정 → [다시 연결]
    (파일 위치: Windows `%APPDATA%\Mimic\config.json`, macOS `~/Library/Application Support/Mimic/config.json`)
 
-## 실행 · 빌드
+## 설치 파일 받기 (GitHub Actions)
+
+Mac 이 없어도 GitHub Actions 가 Windows·macOS 설치 파일을 만듭니다(`.github/workflows/desktop-build.yml`).
+
+- **아무 때나**: GitHub → Actions → "데스크톱 빌드" → Run workflow → 끝나면 그 실행 화면 아래 Artifacts 에서 `mimic-windows`·`mimic-macos` 를 내려받습니다(30일 보관).
+- **배포할 때**: `desktop/package.json` 의 `version` 을 올리고 `desktop-v<버전>` 태그를 push 합니다(예: `git tag desktop-v0.2.0 && git push origin desktop-v0.2.0`). 태그와 `version` 이 다르면 빌드가 바로 멈춥니다. 설치 파일이 붙은 **초안(draft) 릴리스**가 생기니 Releases 에서 확인한 뒤 게시합니다.
+
+| 파일 | 대상 |
+| --- | --- |
+| `Mimic-<버전>-win.exe` | Windows 10·11 (64·32비트를 한 설치 파일에, 설치할 때 맞는 쪽을 고름) |
+| `Mimic-<버전>-win-legacy.exe` | Windows 7·8·8.1 (Electron 22, 64·32비트) |
+| `Mimic-<버전>-mac-arm64.dmg`, `…-mac-x64.dmg` | macOS Apple 칩 · Intel |
+
+### 지금은 서명 없는 빌드
+
+인증서가 아직 없어 서명하지 않습니다. 처음 열 때 경고가 뜹니다.
+
+- **Windows**: SmartScreen "Windows의 PC 보호" → **추가 정보 → 실행**
+- **macOS**: dmg 에서 응용 프로그램 폴더로 옮긴 뒤 **우클릭 → 열기 → 열기**. macOS 15 이상은 한 번 열어 본 뒤 **시스템 설정 → 개인정보 보호 및 보안 → "그래도 열기"**. (ad-hoc 서명은 해 두어서 "손상된 앱" 오류는 나지 않습니다.)
+
+### 서명 켜기 (나중에)
+
+저장소 Settings → Secrets and variables → Actions 에 아래를 넣으면 워크플로를 고치지 않아도 다음 빌드부터 서명합니다. 값은 파일에 쓰지 않습니다.
+
+| Secret | 내용 |
+| --- | --- |
+| `CSC_LINK`, `CSC_KEY_PASSWORD` | Windows 코드 서명 인증서(.pfx 를 base64 로 바꾼 값)와 비밀번호 |
+| `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD` | Apple "Developer ID Application" 인증서(.p12 를 base64 로)와 비밀번호 |
+| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | 공증(notarize)용 Apple ID·앱 암호·팀 ID. `MAC_CSC_LINK` 와 함께 넣어야 합니다 |
+
+## 실행 · 빌드 (직접)
 
 이 폴더(`desktop/`)는 서버와 별도 프로젝트입니다. Electron 이 커서(수백 MB) 저장소 루트에서는 설치하지 않습니다.
 
@@ -32,13 +62,14 @@ npm run dist         # 지금 OS 용 설치 파일 → dist/
 
 | 명령 | 결과 | 대상 |
 | --- | --- | --- |
-| `npm run dist:win` | `dist/Mimic-<버전>-win-x64.exe`, `…-win-ia32.exe` (NSIS 설치 프로그램, 설치 폴더 선택 가능) | Windows 10·11 |
+| `npm run dist:win` | `dist/Mimic-<버전>-win.exe` (x64·ia32 를 함께 담은 NSIS 설치 프로그램, 설치 폴더 선택 가능) | Windows 10·11 |
 | `npm run dist:win-legacy` | `dist/legacy/…` (Electron 22.3.27 로 빌드) | Windows 7·8·8.1 (구버전 별도) |
 | `npm run dist:mac` | `dist/Mimic-<버전>-mac-arm64.dmg`, `…-mac-x64.dmg` | macOS Apple 칩 · Intel |
 
 - **Windows 구버전**: Electron 23 부터 Windows 7·8·8.1 을 지원하지 않아, 22.3.27 로 따로 빌드합니다. `main.js`·`preload.js` 는 이 버전에서도 돌도록 CommonJS·Node 16 문법만 씁니다. 구버전 빌드는 보안 업데이트가 끝난 Electron 이므로 다운로드 페이지에 "구버전 Windows 전용"으로 표시합니다.
-- **macOS 빌드**는 macOS 에서만 됩니다. 배포하려면 Apple Developer ID 로 서명·공증(notarize)해야 Gatekeeper 경고가 없습니다(`CSC_LINK`, `APPLE_ID` 등 electron-builder 환경변수).
-- **Windows 서명**: 코드 서명 인증서가 없으면 SmartScreen 경고가 뜹니다(`CSC_LINK`·`CSC_KEY_PASSWORD`).
+- **macOS 빌드**는 macOS 에서만 됩니다(Mac 이 없으면 위의 GitHub Actions).
+- `dist` 스크립트는 모두 `--publish never` 입니다. 릴리스는 워크플로의 초안 릴리스로만 올립니다.
+- Windows 에서 "Smart App Control" 이 켜져 있으면 빌드 중 언인스톨러를 만드는 단계가 `spawn UNKNOWN` 으로 멈춥니다(서명 없는 실행 파일 차단). 그때는 GitHub Actions 로 빌드하세요.
 - 아이콘(`icon.png`, 512px)은 저장소 루트에서 `node scripts/make-icons.mjs` 로 웹 아이콘과 함께 다시 만듭니다.
 - 코드 확인만: `node --check main.js && node --check preload.js` (루트의 `npm test` 가 함께 검사).
 
@@ -52,11 +83,11 @@ npm run dist         # 지금 OS 용 설치 파일 → dist/
 
 ## K-09 진행 상태: 일부
 
-있는 것: PWA(설치·오프라인 화면), Electron 소스와 빌드 설정(Windows 10·11 x64·ia32, Windows 7·8 구버전, macOS arm64·x64).
+있는 것: PWA(설치·오프라인 화면), Electron 소스와 빌드 설정(Windows 10·11 x64·ia32, Windows 7·8 구버전, macOS arm64·x64), GitHub Actions 자동 빌드(서명 없음, `desktop-v*` 태그 → 초안 릴리스).
 
 남은 것:
 
-- 실제로 빌드·서명한 설치 파일(exe·dmg). 아직 빌드한 적 없음. 서명 인증서(Windows)·Apple Developer ID(macOS) 필요
+- 서명: 인증서(Windows)·Apple Developer ID(macOS)를 구해 위 secrets 에 넣기. macOS 빌드는 Actions 에서 아직 한 번도 돌려 보지 않음(Windows x64 는 로컬에서 exe 생성 확인)
 - Google Play·Galaxy Store 용 TWA APK/AAB, 직접 배포 APK (코어의 `/.well-known/assetlinks.json` 먼저)
 - TV 전용 APK (Android SDK 빌드 환경 필요)
 - 앱 소개 화면(`web/pages/apps.js`, admin-content 담당)의 설치 버튼: `import { installState, promptInstall, iosHint } from '/pwa.js'` 와 설치 파일 내려받기 링크
