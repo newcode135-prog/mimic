@@ -140,7 +140,7 @@ node mimic-note/mission.mjs done 민호 1                            # 민호님
 | --- | --- | --- | --- |
 | 창민 | changmin | **대표관리자(최종 권한)** | 미정 |
 | 민호 | minho | 관리자(2순위) | 미정 |
-| 유리 | yuri | 관리자(3순위) | 미정 |
+| 유리 | yuri | 관리자(3순위) | emileepark5281-cmd |
 | 네이뜬 | nathan | 팀원 | 미정 |
 | 루카스 | lucas | 팀원 | 미정 |
 
