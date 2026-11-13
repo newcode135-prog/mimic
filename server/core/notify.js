@@ -40,7 +40,7 @@ export function pushEndpointOk(cfg, endpoint) {
   try {
     const u = new URL(endpoint);
     if (u.username || u.password) return false;
-    if (cfg.dev) return u.protocol === 'https:' || (u.protocol === 'http:' && isLocalUrl(endpoint));
+    if (cfg.dev && !cfg.demo && !cfg.sitePassword) return u.protocol === 'https:' || (u.protocol === 'http:' && isLocalUrl(endpoint)); // 체험·미리보기 서버는 운영 규칙
     return u.protocol === 'https:' && !net.isIP(u.hostname.replace(/^\[|\]$/g, '')) && u.hostname !== 'localhost';
   } catch {
     return false;
@@ -75,7 +75,7 @@ async function pushOne(cfg, sub, data) {
     'Content-Length': body.length,
     Authorization: `vapid t=${vapidJwt(v, url.origin)}, k=${v.publicKey}`,
   };
-  const guard = cfg.dev ? undefined : publicLookup;
+  const guard = cfg.dev && !cfg.demo && !cfg.sitePassword ? undefined : publicLookup;
   return new Promise((resolve, reject) => {
     const req = (url.protocol === 'https:' ? https : http).request(url, { method: 'POST', headers, agent: false, lookup: guard, signal: AbortSignal.timeout(15_000) }, (res) => {
       res.resume();

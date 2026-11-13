@@ -46,6 +46,8 @@ export function loadConfig(overrides = {}) {
     countryHeader: env.MIMIC_COUNTRY_HEADER?.trim().toLowerCase() || undefined,
     // 비공개 미리보기·베타: 설정하면 사이트 전체가 접속 비밀번호(HTTP Basic)를 물어본다
     sitePassword: env.MIMIC_SITE_PASSWORD || undefined,
+    // 체험(데모) 서버: 개발 모드에서만. 새 가입 인증코드를 화면에 바로 보여 준다(메일 업체 없이 가입 체험). 운영에서는 무시
+    demo: env.MIMIC_DEMO === '1',
     // 운영 모드 발송 대행사(H-01): JSON POST { from, to, subject, text } + Authorization: Bearer <KEY>
     mail: { api: env.MIMIC_EMAIL_API, key: env.MIMIC_EMAIL_API_KEY, from: env.MIMIC_EMAIL_FROM },
     sms: { api: env.MIMIC_SMS_API, key: env.MIMIC_SMS_API_KEY, from: env.MIMIC_SMS_FROM },

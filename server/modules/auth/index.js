@@ -208,7 +208,9 @@ const DEVICE_APPS = new Set(['cli', 'extension']);
 // ---------- 인증코드(5분 유효·60초 재전송 제한·해시 저장) ----------
 const codeHash = (cfg, target, purpose, code) => sha256(`${cfg.secret}:${target}:${purpose}:${code}`);
 const CODE_LOCK_MSG = '인증코드를 너무 많이 틀렸습니다. 1시간 뒤에 다시 시도해 주세요';
-function issueCode(db, cfg, req, { target, purpose, channel }) {
+// 체험 서버는 임시 공개 주소(터널)로 들어오므로 휴대폰으로 찍는 QR·기기 인가 주소를 요청이 들어온 주소로 만든다(운영은 MIMIC_BASE_URL)
+const siteBase = (cfg, req) => (cfg.dev && cfg.demo && req.get('host') ? `${req.protocol}://${req.get('host')}` : cfg.baseUrl);
+function issueCode(db, cfg, req, { target, purpose, channel, reveal = false }) {
   if (!rateLimit(`auth-code:${req.ip}`, 30, 10 * MIN)) fail(429, 'too_many_requests', '요청이 너무 많습니다. 잠시 뒤에 다시 시도해 주세요');
   checkFails(db, `code:${target}`, CODE_TARGET_FAILS, CODE_LOCK, CODE_LOCK_MSG);
   const last = db.prepare('SELECT created_at FROM auth_codes WHERE target=? AND purpose=? ORDER BY rowid DESC LIMIT 1').get(target, purpose);
@@ -218,6 +220,8 @@ function issueCode(db, cfg, req, { target, purpose, channel }) {
     fail(429, 'too_many_codes', '오늘 받을 수 있는 인증코드 수를 넘었습니다. 내일 다시 시도해 주세요');
   }
   const code = randomCode(6);
+  // 새 코드를 주면 이전 코드는 버린다(새 코드를 쓴 뒤 옛 코드가 '가장 최근 미사용'으로 되살아나지 않게)
+  db.prepare('UPDATE auth_codes SET used_at=? WHERE target=? AND purpose=? AND used_at IS NULL').run(now(), target, purpose);
   db.prepare('INSERT INTO auth_codes (id, target, purpose, code_hash, created_at, expires_at) VALUES (?,?,?,?,?,?)').run(
     newId('c_'),
     target,
@@ -237,7 +241,8 @@ function issueCode(db, cfg, req, { target, purpose, channel }) {
       ? `Your Mimic verification code is ${code}. Enter it within 5 minutes. If you didn't request it, you can ignore this message.`
       : `미믹 인증코드는 ${code} 입니다. 5분 안에 입력해 주세요. 직접 요청하지 않았다면 이 메시지는 무시하셔도 됩니다.`,
   });
-  return { ok: true, expiresIn: CODE_TTL / 1000, resendIn: CODE_RESEND / 1000 };
+  // 체험 서버(개발 모드 + MIMIC_DEMO=1)에서 새 가입일 때만 코드를 돌려준다. 이미 있는 계정의 로그인·재설정 코드는 절대 보여 주지 않는다
+  return { ok: true, expiresIn: CODE_TTL / 1000, resendIn: CODE_RESEND / 1000, ...(cfg.dev && cfg.demo && reveal ? { demoCode: code } : {}) };
 }
 // 확인 한도: 코드 하나 5회 + 대상별 합산 10회/1시간 + IP 별 30회/10분(여러 대상을 번갈아 노리는 추측 방지)
 function useCode(db, cfg, req, { target, purpose, code }) {
@@ -511,7 +516,7 @@ export function register(app, ctx) {
       needSession(req);
       if (owner) fail(409, 'email_taken', owner.id === req.user.id ? '이미 연결된 이메일입니다' : '다른 계정에서 쓰는 이메일입니다');
     }
-    res.json(issueCode(db, cfg, req, { target: email, purpose, channel: 'email' }));
+    res.json(issueCode(db, cfg, req, { target: email, purpose, channel: 'email', reveal: purpose === 'signup' && !owner }));
   });
 
   app.post(`${A}/email/signup`, (req, res) => {
@@ -563,7 +568,9 @@ export function register(app, ctx) {
       if (owner) fail(409, 'phone_taken', owner.id === req.user.id ? '이미 연결된 번호입니다' : '다른 계정에서 쓰는 번호입니다');
     } else if (!owner && ruleFor(db, phone, 'block_signup')) fail(403, 'region_blocked', '이 국가번호로는 새로 가입할 수 없습니다');
     if (purpose === 'login' && !owner) signupGate(ctx, req);
-    res.json({ ...issueCode(db, cfg, req, { target: phone, purpose, channel: 'sms' }), isNew: purpose === 'login' && !owner });
+    // 가입 전 번호의 코드는 목적을 따로 둔다: 그사이 누가 그 번호로 가입해도 이 코드로는 그 계정에 로그인할 수 없다(체험 모드에서 코드가 보이므로)
+    const p = purpose === 'login' && !owner ? 'phone-signup' : purpose;
+    res.json({ ...issueCode(db, cfg, req, { target: phone, purpose: p, channel: 'sms', reveal: p === 'phone-signup' }), isNew: p === 'phone-signup' });
   });
 
   app.post(`${A}/phone/verify`, (req, res) => {
@@ -576,7 +583,7 @@ export function register(app, ctx) {
       if (!consent.required) fail(400, 'terms_required', TERMS_MSG);
       signupGate(ctx, req);
     }
-    useCode(db, cfg, req, { target: phone, purpose: 'login', code: b.code });
+    useCode(db, cfg, req, { target: phone, purpose: u ? 'login' : 'phone-signup', code: b.code });
     const created = !u;
     if (!u) u = createAccount(ctx, req, { phone, via: 'phone', inviteCode: b.inviteCode, marketing: consent.marketing });
     res.json({ user: login(ctx, req, res, u, 'phone'), created });
@@ -724,7 +731,7 @@ export function register(app, ctx) {
     const qrId = newId('qr_');
     const expiresAt = now() + QR_TTL;
     db.prepare('INSERT INTO auth_qr (id, token_hash, req_ip, req_ua, created_at, expires_at) VALUES (?,?,?,?,?,?)').run(qrId, sha256(token), req.ip, req.get('user-agent') || null, now(), expiresAt);
-    const approveUrl = `${cfg.baseUrl}/approve?qr=${token}`;
+    const approveUrl = `${siteBase(cfg, req)}/approve?qr=${token}`;
     res.json({ qrId, expiresAt, qrDataUrl: await QRCode.toDataURL(approveUrl, { margin: 1, width: 240 }), approveUrl: cfg.dev ? approveUrl : undefined });
   });
   app.get(`${A}/qr/:qrId/status`, (req, res) => {
@@ -777,7 +784,7 @@ export function register(app, ctx) {
       now(),
       now() + DEVICE_TTL,
     );
-    res.json({ deviceCode, userCode, verificationUri: `${cfg.baseUrl}/approve?code=${userCode}`, interval: DEVICE_INTERVAL, expiresIn: DEVICE_TTL / 1000 });
+    res.json({ deviceCode, userCode, verificationUri: `${siteBase(cfg, req)}/approve?code=${userCode}`, interval: DEVICE_INTERVAL, expiresIn: DEVICE_TTL / 1000 });
   });
   app.post(`${A}/device/token`, (req, res) => {
     const d = db.prepare('SELECT * FROM auth_device WHERE id=?').get(sha256(String(req.body?.deviceCode || '')));
@@ -827,7 +834,7 @@ export function register(app, ctx) {
     res.json({
       user: publicUser(u),
       identities: db.prepare('SELECT provider, email, created_at AS createdAt FROM identities WHERE user_id=? ORDER BY created_at').all(u.id),
-      providers: Object.fromEntries(Object.keys(PROVIDERS).map((p) => [p, !!providerCfg(cfg, p).clientId || cfg.dev])),
+      providers: Object.fromEntries(Object.keys(PROVIDERS).map((p) => [p, !!providerCfg(cfg, p).clientId || (cfg.dev && !cfg.demo)])),
     });
   });
 

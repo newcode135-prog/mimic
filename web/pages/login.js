@@ -141,8 +141,17 @@ export async function render(root, ctx) {
   const back = (to = 'start') =>
     h('button', { class: 'btn ghost sm auth-back', type: 'button', onclick: () => show(to), html: `${icon('chevronLeft')}<span>${t('다른 방법으로', 'Other options')}</span>` });
   const link = (label, onclick) => h('button', { class: 'auth-link', type: 'button', onclick }, label);
+  // 체험 서버: 메일·문자를 보내지 않고 인증코드를 바로 채워 준다
+  const showDemoCode = (r, input) => {
+    if (!r?.demoCode) return;
+    input.value = r.demoCode;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    toast(t(`체험 모드: 인증코드 ${r.demoCode} 를 자동으로 넣었어요`, `Demo mode: code ${r.demoCode} filled in for you`));
+  };
   const devHint = () =>
-    cfg.dev
+    cfg.demo
+      ? h('p', { class: 'auth-dev-hint' }, t('체험용 미믹이에요. 인증코드는 메일 대신 화면에 바로 채워져요. 실제 개인정보·중요한 파일은 쓰지 마세요.', 'This is a Mimic demo. Codes are filled in on screen instead of emailed. Please do not use real personal data or important files.'))
+      : cfg.dev
       ? h(
           'p',
           { class: 'auth-dev-hint' },
@@ -192,7 +201,8 @@ export async function render(root, ctx) {
   ];
   const socialBtn = ([p, ko, en]) => {
     const real = !!cfg.oauth?.[p];
-    const ready = real || cfg.dev;
+    const devOk = cfg.dev && !cfg.demo; // 체험 서버에서는 개발용 소셜 로그인 화면이 막혀 있다
+    const ready = real || devOk;
     return h(
       'button',
       {
@@ -207,8 +217,8 @@ export async function render(root, ctx) {
         },
       },
       t(ko, en),
-      !real && cfg.dev ? h('span', { class: 'badge accent' }, t('개발용', 'Dev')) : null,
-      !ready ? h('span', { class: 'badge' }, t('설정 필요', 'Not set up')) : null,
+      !real && devOk ? h('span', { class: 'badge accent' }, t('개발용', 'Dev')) : null,
+      !ready ? h('span', { class: 'badge' }, cfg.demo ? t('체험에서는 사용 불가', 'Not in demo') : t('설정 필요', 'Not set up')) : null,
     );
   };
   const method = (ic, label, onclick) => h('button', { class: 'auth-method', type: 'button', onclick }, h('span', { class: 'auth-method-icon', html: icon(ic) }), label);
@@ -239,6 +249,7 @@ export async function render(root, ctx) {
         const phone = pf.value();
         if (!phone) return toast(t('휴대폰 번호를 확인해 주세요', 'Check your phone number'), 'error'), false;
         const r = await api('/api/auth/phone/send-code', { method: 'POST', body: { phone } });
+        showDemoCode(r, code);
         note.classList.toggle('auth-emph', !!r.isNew);
         if (r.isNew && !consentOk()) flashConsent();
       }, timers);
@@ -296,7 +307,7 @@ export async function render(root, ctx) {
       const send = codeButton(async () => {
         const v = email.value.trim();
         if (!email.checkValidity() || !v) return toast(t('이메일 주소를 확인해 주세요', 'Check your email address'), 'error'), false;
-        await api('/api/auth/email/send-code', { method: 'POST', body: { email: v, purpose: 'signup' } });
+        showDemoCode(await api('/api/auth/email/send-code', { method: 'POST', body: { email: v, purpose: 'signup' } }), code);
       }, timers);
       return [
         back('emailLogin'),

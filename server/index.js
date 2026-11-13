@@ -31,14 +31,45 @@ export async function createApp(overrides = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 'loopback');
-  // 비공개 미리보기·베타(MIMIC_SITE_PASSWORD): 비밀번호를 아는 사람만 사이트 전체에 들어온다. 아이디는 아무거나
+  // 비공개 미리보기·베타(MIMIC_SITE_PASSWORD): 접속 키를 아는 사람만 들어온다.
+  // 공유 링크에 ?key=<키> 를 붙이면 한 번 누르는 것으로 들어오고(쿠키 30일), 키 없이 오면 입력 화면을 보여 준다.
+  // 브라우저 기본 비밀번호 창(HTTP Basic)은 카카오톡 등 앱 안 브라우저에서 뜨지 않아 쓰지 않는다
   if (cfg.sitePassword) {
-    const want = crypto.createHash('sha256').update(cfg.sitePassword).digest();
+    const pass = crypto.createHmac('sha256', cfg.secret).update('site:' + cfg.sitePassword).digest('base64url');
+    const same = (a, b) => {
+      const x = crypto.createHash('sha256').update(String(a)).digest();
+      return crypto.timingSafeEqual(x, crypto.createHash('sha256').update(String(b)).digest());
+    };
+    const okCookie = (req) => same(/(?:^|;\s*)mimic_site=([^;]+)/.exec(req.get('cookie') || '')?.[1] || '', pass);
+    const letIn = (req, res) => res.cookie('mimic_site', pass, { httpOnly: true, sameSite: 'lax', secure: req.secure, maxAge: 30 * 24 * 3600e3, path: '/' });
+    const safeNext = (v) => (typeof v === 'string' && /^\/(?![/\\])/.test(v) ? v : '/');
+    const esc = (v) => String(v).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    const form = (res, next, wrong) =>
+      res
+        .status(401)
+        .type('html')
+        .send(
+          `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>미믹 미리보기</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f4f7f6;color:#14302c}
+form{background:#fff;padding:28px 24px;border-radius:16px;box-shadow:0 6px 24px rgba(0,0,0,.08);width:min(340px,88vw)}h1{margin:0 0 6px;font-size:20px;color:#0f9d8f}p{margin:0 0 16px;font-size:14px;color:#55706b}
+input,button{width:100%;box-sizing:border-box;font-size:16px;padding:12px;border-radius:10px}input{border:1px solid #cfdcd9;margin-bottom:10px}button{border:0;background:#0f9d8f;color:#fff;font-weight:600}.err{color:#c0392b}</style></head>
+<body><form method="post" action="/__site-login"><h1>미믹 미리보기</h1><p>받은 링크를 그대로 누르면 바로 들어와요. 접속 키를 받았다면 아래에 넣어 주세요.<br>Enter the access key you were given.</p>
+${wrong ? '<p class="err">접속 키가 맞지 않아요 / Wrong key</p>' : ''}<input name="key" placeholder="접속 키 / Access key" autocomplete="off" autofocus><input type="hidden" name="next" value="${esc(next)}"><button>들어가기 / Enter</button></form></body></html>`,
+        );
+    app.post('/__site-login', express.urlencoded({ extended: false }), (req, res) => {
+      const next = safeNext(req.body?.next);
+      if (!same(req.body?.key || '', cfg.sitePassword)) return form(res, next, true);
+      letIn(req, res).redirect(303, next);
+    });
     app.use((req, res, next) => {
-      const m = /^Basic (.+)$/i.exec(req.get('authorization') || '');
-      const pw = m ? Buffer.from(m[1], 'base64').toString().replace(/^[^:]*:/, '') : '';
-      if (crypto.timingSafeEqual(crypto.createHash('sha256').update(pw).digest(), want)) return next();
-      res.set('WWW-Authenticate', 'Basic realm="Mimic preview", charset="UTF-8"').status(401).type('text/plain; charset=utf-8').send('미믹 미리보기 접속 비밀번호가 필요합니다 / Password required');
+      if (okCookie(req)) return next();
+      if (req.method === 'GET' && typeof req.query.key === 'string' && same(req.query.key, cfg.sitePassword)) {
+        const u = new URL(req.originalUrl, 'http://x');
+        u.searchParams.delete('key');
+        return letIn(req, res).redirect(302, safeNext(u.pathname + u.search)); // //evil.example 같은 주소로 내보내지 않는다
+      }
+      if (/^\/(api|webdav)(\/|$)/i.test(req.path)) return res.status(401).json({ error: 'site_key_required', message: '미리보기 접속 키가 필요합니다' });
+      form(res, safeNext(req.originalUrl), false);
     });
   }
   // WebDAV 는 요청 본문이 파일 그 자체라 JSON 해석을 건너뛴다(Express 경로는 대소문자 구분 없음 → /WEBDAV 도 같게, G-01)
@@ -82,6 +113,7 @@ export async function createApp(overrides = {}) {
   app.get('/api/config', (_req, res) =>
     res.json({
       dev: cfg.dev,
+      demo: !!(cfg.dev && cfg.demo),
       oauth: Object.fromEntries(Object.entries(cfg.oauth).map(([k, v]) => [k, !!v.clientId])),
       paymentsTestMode: cfg.dev && !cfg.payments.tossSecretKey && !cfg.payments.tossSecretKeyUsd,
       telegram: !!cfg.telegramToken,

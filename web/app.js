@@ -166,3 +166,14 @@ async function render() {
 }
 
 render();
+
+// 체험 서버 안내 띠(MIMIC_DEMO): 결제는 테스트, 데이터는 지워질 수 있음
+fetch('/api/config')
+  .then((r) => r.json())
+  .then((c) => {
+    if (!c.demo) return;
+    const bar = h('div', { class: 'demo-bar', role: 'note' }, t('체험용 미믹이에요 · 결제는 테스트라 실제 돈이 나가지 않아요 · 올린 파일은 지워질 수 있어요', 'Mimic demo · Payments are test-only · Uploaded files may be deleted'));
+    Object.assign(bar.style, { position: 'fixed', left: '0', right: '0', bottom: '0', zIndex: '9999', padding: '6px 12px', background: '#0f9d8f', color: '#fff', fontSize: '12px', textAlign: 'center' });
+    document.body.append(bar);
+  })
+  .catch(() => {});

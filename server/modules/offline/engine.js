@@ -407,9 +407,10 @@ export function pickFiles(files, filter = true) {
 }
 
 // ---------- URL(A-03) ----------
-// 운영 모드에서는 내부망·루프백 주소로의 요청을 막는다(SSRF). 개발·테스트는 로컬 서버를 쓰므로 허용
+// 운영 모드에서는 내부망·루프백 주소로의 요청을 막는다(SSRF). 개발·테스트는 로컬 서버를 쓰므로 허용.
+// 체험(MIMIC_DEMO)·미리보기(MIMIC_SITE_PASSWORD) 서버는 낯선 사람이 쓰므로 개발 모드여도 막는다(이 PC의 다른 서버·공유기 보호)
 export { isPrivateIp }; // 판정은 core/util.js(웹 푸시와 같이 씀)
-const allowPrivate = (cfg) => cfg.offlineAllowPrivate ?? cfg.dev;
+const allowPrivate = (cfg) => cfg.offlineAllowPrivate ?? (cfg.dev && !cfg.demo && !cfg.sitePassword);
 const bareHost = (u) => u.hostname.replace(/^\[|\]$/g, '');
 
 // 소켓이 연결할 바로 그 조회 결과를 확인한다. 검사와 연결이 같은 주소를 쓰므로 DNS rebinding 으로 우회할 수 없다
