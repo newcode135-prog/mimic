@@ -84,6 +84,27 @@
       "status": "done",
       "note": "",
       "updatedAt": "2026-11-13T03:36:18.429Z"
+    },
+    {
+      "stage": "labeling",
+      "target": "대화-2026-11-13-5",
+      "status": "done",
+      "note": "[ ] 라벨 4개",
+      "updatedAt": "2026-11-13T03:49:12.812Z"
+    },
+    {
+      "stage": "compression",
+      "target": "대화-2026-11-13-5",
+      "status": "done",
+      "note": "결정 7개, 1242자",
+      "updatedAt": "2026-11-13T03:49:12.812Z"
+    },
+    {
+      "stage": "upload",
+      "target": "대화-2026-11-13-5",
+      "status": "done",
+      "note": "uploads/2026-11-13-대화-5.md",
+      "updatedAt": "2026-11-13T03:49:12.812Z"
     }
   ]
 }
