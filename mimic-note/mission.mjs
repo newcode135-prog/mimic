@@ -70,6 +70,16 @@ export async function mutate(github, apply, describe) {
   throw new Error('다른 사람이 동시에 미션을 바꾸고 있어 3번 모두 충돌했습니다. 잠시 뒤 다시 시도하세요(강제로 덮어쓰지 않았습니다).');
 }
 
+// 보기 명령은 GitHub main 의 최신 데이터(가능하면), 안 되면 이 폴더의 파일.
+function readLatest(github, dir) {
+  if (github) {
+    try {
+      return { members: JSON.parse(github.readFile(MEMBERS_FILE).text).members, db: JSON.parse(github.readFile(DB_FILE).text), source: 'GitHub main 최신' };
+    } catch { /* 아래 로컬로 */ }
+  }
+  return { members: loadMembers(dir), db: loadDb(dir), source: github ? '이 폴더(GitHub 를 못 읽어 최신이 아닐 수 있음 — git pull)' : '이 폴더' };
+}
+
 async function readStdin() {
   if (process.stdin.isTTY) return '';
   let s = '';
@@ -90,8 +100,7 @@ export async function run(argv, { dir = NOTE_DIR, github, stdin = readStdin, wai
   const [cmd, ...rest] = args;
 
   if (cmd === 'list' || !cmd) {
-    const members = loadMembers(dir);
-    const db = loadDb(dir);
+    const { members, db, source } = readLatest(github, dir);
     const targets = rest[0] ? [requireMember(rest[0], members)] : members;
     for (const m of targets) {
       const open = openMissions(db, m.id);
@@ -101,12 +110,12 @@ export async function run(argv, { dir = NOTE_DIR, github, stdin = readStdin, wai
       open.forEach((x, i) => out.push(`  ${i + 1}. [${x.id}] ${x.title}`));
     }
     if (!out.length) out.push('등록된 미션이 없습니다.');
+    if (github) out.push(`(기준: ${source})`);
     return out.join('\n');
   }
 
   if (cmd === 'all') {
-    const members = loadMembers(dir);
-    const db = loadDb(dir);
+    const { members, db, source } = readLatest(github, dir);
     let open = 0;
     let done = 0;
     out.push('📋 미믹노트 전체 미션 현황', '');
@@ -119,7 +128,7 @@ export async function run(argv, { dir = NOTE_DIR, github, stdin = readStdin, wai
       o.slice(0, 3).forEach((x, i) => out.push(`   ${i + 1}. [${x.id}] ${x.title}${x.priority === 'low' ? ' (후순위)' : ''}`));
       if (o.length > 3) out.push(`   … 외 ${o.length - 3}개`);
     }
-    out.push('', `합계: 남은 ${open} · 완료 ${done} (이 폴더 기준 — 최신은 git pull 후)`);
+    out.push('', `합계: 남은 ${open} · 완료 ${done} (기준: ${source})`);
     return out.join('\n');
   }
 
@@ -138,16 +147,22 @@ export async function run(argv, { dir = NOTE_DIR, github, stdin = readStdin, wai
   }
   if ((cmd === 'done' || cmd === 'low') && !more.length) throw new Error('미션 번호(1, 2 …) 또는 ID(M-0001)를 주세요.');
 
+  // 번호(2번)는 처음 읽은 목록 기준으로 ID 를 정해 두고, 충돌로 다시 시도할 때는 그 ID 로만 처리한다
+  // (그사이 누가 1번을 끝내 번호가 당겨져도 엉뚱한 미션을 완료하지 않음 — 이미 끝났으면 오류)
+  let ids = null;
   const apply = {
     set: (db, members, actor) => setMissions(db, who, items, actor.id, members),
     add: (db, members, actor) => addMissions(db, who, items, actor.id, members, { top }),
     done: (db, members, actor) => {
       const target = requireMember(who, members);
-      return { done: completeMissions(db, target.id, more, { by: actor.id, members }), changed: true };
+      const done = completeMissions(db, target.id, ids ?? more, { by: actor.id, members });
+      ids ??= done.map((m) => m.id);
+      return { done, changed: true };
     },
     low: (db, members, actor) => {
       const target = requireMember(who, members);
-      const m = setLowPriority(db, target.id, more[0], actor.id, members);
+      const m = setLowPriority(db, target.id, ids?.[0] ?? more[0], actor.id, members);
+      ids ??= [m.id];
       return { low: m, changed: true };
     },
   }[cmd];
@@ -186,7 +201,7 @@ export async function run(argv, { dir = NOTE_DIR, github, stdin = readStdin, wai
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  run(process.argv.slice(2)).then((s) => console.log(s), (e) => {
+  run(process.argv.slice(2), { github: createGithub() }).then((s) => console.log(s), (e) => {
     console.error(e.message);
     process.exit(1);
   });

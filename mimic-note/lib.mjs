@@ -206,17 +206,23 @@ export function formatMissions(member, missions) {
 // 같은 미션인지 비교할 때: 앞뒤·중복 공백 무시, 영문 대소문자 무시
 export const normTitle = (s) => String(s || '').normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
 
-// "1. 제목" "2) 제목" "- 제목" "3번 제목" "1️⃣ 제목" 이 한 미션. 그 밑의 들여쓴 줄은 설명.
-// 번호 붙은 줄이 하나도 없으면 줄마다 미션 하나. "민호 미션설정" 같은 머리줄은 버린다.
-const ITEM_RE = /^\s*(?:\d{1,3}\s*[.)．]|\d{1,3}\s*번[.:]?|\d️?⃣|🔟|[-*•·])\s*(\S.*)$/u;
+// "1. 제목" "2) 제목" "- 제목" "3번 제목" "1️⃣ 제목" 이 한 미션. 첫 미션보다 더 들여쓴 줄(하위 항목 포함)과
+// 번호 없는 줄은 바로 위 미션의 설명. "1.5배" 처럼 숫자가 이어지면 번호가 아니다.
+// 번호 붙은 줄이 하나도 없으면 줄마다 미션 하나. 첫 줄의 "민호 미션설정" 같은 머리줄만 버린다.
+const ITEM_RE = /^(\s*)(?:\d{1,3}\s*[.)．](?!\d)|\d{1,3}\s*번[.:]?|\d️?⃣|🔟|[-*•·])\s*(\S.*)$/u;
 export function parseMissionList(text) {
-  const lines = String(text || '').replace(/\r/g, '').split('\n').filter((l) => l.trim() && !/미션\s*(설정|추가)\s*$/.test(l.trim()));
+  const lines = String(text || '').replace(/\r/g, '').split('\n').filter((l) => l.trim());
+  if (lines.length && !ITEM_RE.test(lines[0]) && /^\S+\s+미션\s*(설정|추가)$/.test(lines[0].trim())) lines.shift();
   const numbered = lines.some((l) => ITEM_RE.test(l));
   const items = [];
+  let level = null;
   for (const line of lines) {
     const m = line.match(ITEM_RE);
-    if (m || !numbered) items.push({ title: (m ? m[1] : line).trim(), detail: '' });
-    else if (items.length) items.at(-1).detail = [items.at(-1).detail, line.trim()].filter(Boolean).join('\n');
+    if (!numbered) items.push({ title: line.trim(), detail: '' });
+    else if (m && (level === null || m[1].length <= level)) {
+      level ??= m[1].length;
+      items.push({ title: m[2].trim(), detail: '' });
+    } else if (items.length) items.at(-1).detail = [items.at(-1).detail, line.trim()].filter(Boolean).join('\n');
   }
   for (const it of items) if (it.title.length > 200) throw new Error(`미션 제목이 너무 깁니다(200자 이하): "${it.title.slice(0, 30)}…"`);
   return items;
@@ -232,7 +238,7 @@ function requireAdmin(by, members, what) {
 const visible = (db, id) => JSON.stringify(openMissions(db, id).map((m) => [m.id, m.title, m.detail || '', m.priority || '']));
 
 // 미션설정: 그 사람의 남은 미션을 새 목록으로 바꾼다.
-// - 제목이 같은 기존 미션은 ID 를 그대로 두고 순서·설명만 고친다.
+// - 제목이 같은 기존 미션은 ID 를 그대로 두고 순서·설명만 고친다(입력한 순서가 우선이라 후순위 표시는 지운다).
 // - 새 목록에 없는 기존 미션은 지우지 않고 status 'replaced' 로 보관한다(완료 기록은 손대지 않음).
 // - 같은 목록을 다시 넣으면 changed=false(커밋·알림 없음). 빈 목록은 거부(전체 삭제·초기화 금지).
 export function setMissions(db, assignee, items, by, members, now = new Date().toISOString()) {
@@ -251,6 +257,7 @@ export function setMissions(db, assignee, items, by, members, now = new Date().t
     if (m) {
       pool.delete(normTitle(it.title));
       m.order = i + 1;
+      delete m.priority;
       if (it.detail) m.detail = String(it.detail).trim();
       kept.push(m);
     } else {

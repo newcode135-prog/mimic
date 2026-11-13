@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 // 미믹노트 알림 — GitHub Actions(.github/workflows/mimic-checkin.yml)에서 실행한다.
 //
-// 1) 장부(lastSha)부터 지금 main 까지를 push 단위로 나눈다. push 마다 그 push 를 한 GitHub 계정의 권한을
-//    "push 전" 명부(members.json)로 확인한다: 미션 만들기·수정·후순위 = 관리자, 본인 미션 완료 = 본인,
-//    삭제·명부 변경 = 대표관리자(저장소 주인 계정은 모두 가능). 권한 없는 변경은 알리지 않고 실행을 실패로 표시하며
-//    대표관리자에게 경고를 보낸다.
-// 2) 권한이 확인된 변경에서 텔레그램 메시지가 실제로 달라진 팀원만 고른다(안 바뀐 사람에게는 안 보냄).
-// 3) 그 팀원의 "지금 main" 기준 남은 미션을 그 사람 chat id 로만 보낸다. sendMessage 응답(ok·message_id·chat.id)까지 확인.
+// 1) 장부의 "마지막으로 확인된 커밋(verifiedSha)"부터 지금 main 까지를 push 단위로 나눈다(push 기록 = 저장소 활동 API,
+//    [skip ci] push·force push 도 남는다). push 마다 그 push 를 한 GitHub 계정의 권한을 "확인된 상태"의 명부로 확인한다:
+//    미션 만들기·수정·후순위 = 관리자, 본인 미션 완료 = 본인, 삭제·명부 변경 = 대표관리자(저장소 주인 계정은 모두 가능).
+//    권한 없는 변경·깨진 데이터는 확인된 상태로 올리지 않는다 → 그 내용은 발송되지 않고, 실행은 실패, 대표관리자에게 경고.
+//    그 뒤 push 는 계속 "확인된 상태"와 비교하므로, 관리자 이상이 다시 저장하거나 되돌릴 때까지 보류된다.
+//    main 기록이 다시 쓰이면(force push) 저장소 관리자가 실행할 때만 다시 기준을 잡고, 그 전에는 아무것도 보내지 않는다.
+// 2) 확인된 변경에서 텔레그램 메시지가 실제로 달라진 팀원만 고른다(안 바뀐 사람에게는 안 보냄).
+// 3) 그 팀원의 "확인된 최신 상태" 기준 남은 미션을 그 사람 chat id 로만 보낸다. sendMessage 응답(ok·message_id·chat.id)까지 확인.
 // 4) 장부(.mimic-note-ledger/ledger.json, Actions 캐시)에 사람별 마지막 발송 메시지 해시를 남겨 같은 내용은 다시 안 보낸다.
 //    미연결·토큰 없음·실패는 '보류'로 남겨 다음 실행(10분 정기 검사 포함)에서 다시 시도한다.
-// 로그에는 토큰·chat id 를 쓰지 않는다. 팀원별 결과는 `MIMIC_RESULT {...}` 한 줄씩(Claude Code 가 읽음).
+// 한계: 쓰기 권한이 있는 사람은 이 파일이나 워크플로 자체를 고쳐 push 할 수 있다(그 push 의 코드가 실행됨).
+//       이 확인은 실수·직접 수정을 잡는 감지 장치이고, 완전한 차단은 GitHub 쪽 권한(쓰기 권한 범위·규칙)으로만 된다.
+// 로그에는 토큰·chat id 를 쓰지 않는다. 결과는 `MIMIC_RESULT {...}`·`MIMIC_PROBLEM {...}`·`MIMIC_COVERS [...]` 줄(Claude Code 가 읽음).
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -94,58 +98,76 @@ const schemaErrors = (s) => (s.error ? [s.error] : [...validateMembers(s.members
 export function loadLedger(file) {
   try {
     const l = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return { lastSha: l.lastSha || null, members: l.members || {}, alerts: l.alerts || [] };
+    return { verifiedSha: l.verifiedSha || null, members: l.members || {}, alerts: l.alerts || [], flagged: l.flagged || [] };
   } catch {
-    return { lastSha: null, members: {}, alerts: [] };
+    return { verifiedSha: null, members: {}, alerts: [], flagged: [] };
   }
 }
 
-// deps: git(아래 makeGit 과 같은 모양), gh{pushRuns, isRepoAdmin}, send(token, chatId, text) → sendMessage 결과
+// deps: git(아래 makeGit 과 같은 모양), gh{pushes() → Map(push 후 커밋 → 계정), isRepoAdmin(login)},
+//       send(token, chatId, text) → sendMessage 결과, ledger(loadLedger)
 export async function runNotify({ env, git, gh, send, ledger, now = () => new Date().toISOString() }) {
   const results = [];
   const problems = [];
+  const covered = [];
+  const candidates = new Set();
   const head = git.head();
   const event = env.EVENT_NAME || 'workflow_dispatch';
-  const usable = (s) => /^[0-9a-f]{40}$/.test(s || '') && !/^0+$/.test(s) && git.exists(s) && git.isAncestor(s, head);
-  const start = usable(ledger.lastSha) ? ledger.lastSha : event === 'push' && usable(env.BEFORE_SHA) ? env.BEFORE_SHA : head;
-  const candidates = new Set();
-  const changed = (a, b) => git.blob(a, DATA.db) !== git.blob(b, DATA.db) || git.blob(a, DATA.members) !== git.blob(b, DATA.members);
   const owner = (env.GITHUB_REPOSITORY_OWNER || '').toLowerCase();
+  const isRepoAdmin = async (login) => Boolean(login) && ((owner && String(login).toLowerCase() === owner) || Boolean(await gh.isRepoAdmin(login)));
+  const valid = (s) => /^[0-9a-f]{40}$/.test(s || '') && !/^0+$/.test(s) && git.exists(s);
+  const changed = (a, b) => git.blob(a, DATA.db) !== git.blob(b, DATA.db) || git.blob(a, DATA.members) !== git.blob(b, DATA.members);
+  const flagged = new Set(ledger.flagged || []);
+  // 같은 문제(커밋)는 처음 한 번만 실패·경고로 다루고, 그다음부터는 '아직 해결 안 됨' 경고로만 남긴다.
+  const report = (p) => {
+    p.known = Boolean(p.sha && flagged.has(p.sha));
+    if (p.sha) flagged.add(p.sha);
+    problems.push(p);
+  };
 
-  // 1) 처리 안 한 구간을 push 단위로 확인
-  let processed = start;
-  if (start !== head) {
-    const pushes = new Map((await gh.pushRuns()).map((r) => [r.head_sha, r.actor]));
+  let verified = valid(ledger.verifiedSha) ? ledger.verifiedSha : null;
+  let halted = false;
+  // 장부에 확인된 커밋이 있는데 main 에 없으면(force push 로 지워져 받아지지도 않은 경우 포함) 멈춘다(fail closed)
+  if (ledger.verifiedSha && (!verified || !git.isAncestor(verified, head))) {
+    const ok = (event === 'push' || event === 'workflow_dispatch') && await isRepoAdmin(env.ACTOR);
+    report({ kind: 'history-rewrite', sha: head, actor: env.ACTOR, detail: [`main 기록이 다시 쓰였습니다(확인된 커밋 ${String(ledger.verifiedSha).slice(0, 7)} 가 main 에 없음)`, ok ? '저장소 관리자 실행이라 지금 main 을 새 기준으로 잡았습니다' : '저장소 주인이 이 워크플로를 실행(push 또는 수동 실행)할 때까지 알림을 보내지 않습니다'] });
+    if (ok) verified = head;
+    else halted = true;
+  }
+  if (!verified) verified = event === 'push' && valid(env.BEFORE_SHA) && git.isAncestor(env.BEFORE_SHA, head) ? env.BEFORE_SHA : head;
+
+  // 1) 확인된 커밋 이후를 push 단위로 확인
+  if (!halted && verified !== head) {
+    const pushes = await gh.pushes();
     if (event === 'push' && env.AFTER_SHA) pushes.set(env.AFTER_SHA, env.ACTOR);
-    let from = start;
-    for (const c of git.firstParent(start, head)) {
+    let base = snapshot(git, verified);
+    for (const c of git.firstParent(verified, head)) {
       if (!pushes.has(c)) continue;
       const actor = pushes.get(c);
-      if (changed(from, c)) {
-        const base = snapshot(git, from);
-        const next = snapshot(git, c);
-        const bad = schemaErrors(next);
-        if (bad.length) problems.push({ kind: 'schema', sha: c, actor, detail: bad.slice(0, 10) });
-        else {
-          const repoAdmin = (owner && String(actor).toLowerCase() === owner) || await gh.isRepoAdmin(actor);
-          const v = verifyChange({ base, head: next, actor, repoAdmin });
-          if (v.length) problems.push({ kind: 'unauthorized', sha: c, actor, detail: v });
-          else changedMembers(base.db, next.db, next.members).forEach((id) => candidates.add(id));
-        }
-      }
-      from = c;
+      covered.push(c);
+      if (!changed(verified, c)) { verified = c; base = snapshot(git, c); continue; }
+      const next = snapshot(git, c);
+      const bad = schemaErrors(next);
+      if (bad.length) { report({ kind: 'schema', sha: c, actor, detail: bad.slice(0, 10) }); continue; }
+      const v = verifyChange({ base, head: next, actor, repoAdmin: await isRepoAdmin(actor) });
+      if (v.length) { report({ kind: 'unauthorized', sha: c, actor, detail: v }); continue; }
+      changedMembers(base.db, next.db, next.members).forEach((id) => candidates.add(id));
+      verified = c;
+      base = next;
     }
-    // 마지막 push 뒤에 남은 커밋에 데이터 변경이 있으면, 그 push 의 실행이 아직 안 보이는 것 → 다음 실행에 맡긴다.
-    processed = from === head || !changed(from, head) ? head : from;
+    // 남은 커밋에 데이터 변경이 없으면(기록 안 된 push 가 없거나, 문제 변경이 되돌려졌으면) 지금 main 까지 확인된 것
+    if (!changed(verified, head)) verified = head;
   }
 
-  // 2) 보류된 알림 + 수동 요청
+  // 2) 보낼 내용은 항상 "확인된 상태"에서 만든다(확인 안 된 변경은 보내지 않음)
+  const cur = snapshot(git, verified);
+  const curBad = schemaErrors(cur);
+  if (curBad.length) report({ kind: 'schema', sha: verified, detail: curBad.slice(0, 10) });
   for (const [id, s] of Object.entries(ledger.members)) if (s.pending) candidates.add(id);
-  const cur = snapshot(git, head);
   let forced = null;
   if (env.INPUT_MEMBER) {
     const m = findMember(env.INPUT_MEMBER, cur.members);
-    if (!m) problems.push({ kind: 'unknown-member', detail: [`팀원을 찾지 못했습니다: ${env.INPUT_MEMBER}`] });
+    if (!m) problems.push({ kind: 'unknown-member', known: false, detail: [`팀원을 찾지 못했습니다: ${env.INPUT_MEMBER}`] });
     else {
       candidates.add(m.id);
       if (env.INPUT_FORCE === 'true') forced = m.id;
@@ -154,9 +176,7 @@ export async function runNotify({ env, git, gh, send, ledger, now = () => new Da
 
   // 3) 발송
   const token = env.TELEGRAM_BOT_TOKEN;
-  const curBad = schemaErrors(cur);
-  if (curBad.length) problems.push({ kind: 'schema', sha: head, detail: curBad.slice(0, 10) });
-  else {
+  if (!halted && !curBad.length) {
     for (const id of candidates) {
       const member = cur.members.find((m) => m.id === id);
       if (!member) { delete ledger.members[id]; continue; }
@@ -186,14 +206,15 @@ export async function runNotify({ env, git, gh, send, ledger, now = () => new Da
     }
   }
 
-  // 4) 권한 없는 변경 → 대표관리자에게 경고(같은 커밋은 한 번만)
+  // 4) 새 문제(권한 없음·깨진 데이터·기록 다시 쓰기) → 대표관리자에게 경고(같은 커밋은 한 번만)
   const ownerMember = cur.members.find((m) => m.role === 'owner');
-  for (const p of problems.filter((x) => x.kind === 'unauthorized' && !ledger.alerts.includes(x.sha))) {
-    const chatId = ownerMember && chatIdFor(ownerMember.id, env);
-    if (!token || !chatId) continue;
-    const text = ['⚠️ <b>MIMIC NOTE 경고</b>', '', '권한 없는 미션 변경을 감지해 팀원 알림을 보내지 않았어요.', ...p.detail.slice(0, 8).map((d) => `• ${esc(d)}`), '', `커밋 ${p.sha.slice(0, 7)}`].join('\n');
+  const ownerChat = ownerMember && chatIdFor(ownerMember.id, env);
+  for (const p of problems.filter((x) => x.sha && !x.known && !ledger.alerts.includes(x.sha))) {
+    if (!token || !ownerChat) continue;
+    const what = { unauthorized: '권한 없는 미션 변경', schema: '깨진 미션 데이터', 'history-rewrite': 'main 기록 다시 쓰기(force push)' }[p.kind] || p.kind;
+    const text = ['⚠️ <b>MIMIC NOTE 경고</b>', '', `${what}을(를) 감지해 그 내용은 팀원에게 보내지 않았어요.`, ...(p.detail || []).slice(0, 8).map((d) => `• ${esc(d)}`), '', `커밋 ${p.sha.slice(0, 7)}${p.actor ? ` · ${esc(p.actor)}` : ''}`].join('\n');
     try {
-      await send(token, chatId, text);
+      await send(token, ownerChat, text);
       ledger.alerts = [...ledger.alerts, p.sha].slice(-50);
       results.push({ member: ownerMember.id, status: 'alert' });
     } catch (e) {
@@ -201,8 +222,9 @@ export async function runNotify({ env, git, gh, send, ledger, now = () => new Da
     }
   }
 
-  ledger.lastSha = processed;
-  return { results, problems, ledger, head, processed };
+  if (!halted) ledger.verifiedSha = verified; // 멈춘 실행은 기준을 바꾸지 않는다
+  ledger.flagged = [...flagged].slice(-100);
+  return { results, problems, covered, ledger, head, verified, halted };
 }
 
 function makeGit(cwd) {
@@ -231,9 +253,16 @@ function makeGh(env) {
     return r.json();
   };
   return {
-    async pushRuns() {
-      const j = await get(`/actions/workflows/${WORKFLOW}/runs?event=push&branch=main&per_page=100`);
-      return j.workflow_runs.map((r) => ({ head_sha: r.head_sha, actor: r.actor?.login }));
+    // push 후 커밋 → push 한 계정. 저장소 활동 기록([skip ci]·force push·PR 병합 포함)이 우선, 안 되면 이 워크플로의 push 실행 기록.
+    async pushes() {
+      try {
+        const j = await get('/activity?ref=refs%2Fheads%2Fmain&per_page=100');
+        return new Map(j.filter((a) => a.after && a.actor?.login && !/^branch_/.test(a.activity_type || '')).map((a) => [a.after, a.actor.login]));
+      } catch (e) {
+        console.log(`::warning title=미믹노트::저장소 활동 기록을 못 읽어 Actions 실행 기록으로 push 한 사람을 확인합니다(${e.message})`);
+        const j = await get(`/actions/workflows/${WORKFLOW}/runs?event=push&branch=main&per_page=100`);
+        return new Map(j.workflow_runs.map((r) => [r.head_sha, r.actor?.login]));
+      }
     },
     async isRepoAdmin(login) {
       try { return (await get(`/collaborators/${encodeURIComponent(login)}/permission`)).permission === 'admin'; } catch { return false; }
@@ -253,10 +282,14 @@ async function main() {
   const before = JSON.stringify(ledger);
   const r = await runNotify({ env, git, gh: makeGh(env), send: (token, chatId, text) => telegramApi(token, 'sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true } }), ledger });
 
-  console.log(`미믹노트 알림: 이벤트 ${env.EVENT_NAME} · main ${r.head.slice(0, 7)} · 처리 완료 ${String(r.processed).slice(0, 7)}`);
+  console.log(`미믹노트 알림: 이벤트 ${env.EVENT_NAME} · main ${r.head.slice(0, 7)} · 확인된 상태 ${String(r.verified).slice(0, 7)}`);
+  console.log(`MIMIC_COVERS ${JSON.stringify(r.covered)}`);
   for (const x of r.results) console.log(`MIMIC_RESULT ${JSON.stringify(x)}`);
   if (!r.results.length) console.log('보낼 대상 없음(바뀐 팀원·보류된 알림 없음)');
-  for (const p of r.problems) console.log(`::error title=미믹노트 ${p.kind}::${[p.sha && `커밋 ${p.sha.slice(0, 7)}`, p.actor, ...(p.detail || [])].filter(Boolean).join(' / ')}`);
+  for (const p of r.problems) {
+    console.log(`MIMIC_PROBLEM ${JSON.stringify({ kind: p.kind, sha: p.sha, actor: p.actor, known: p.known, detail: p.detail })}`);
+    console.log(`::${p.known ? 'warning' : 'error'} title=미믹노트 ${p.kind}${p.known ? '(아직 해결 안 됨)' : ''}::${[p.sha && `커밋 ${p.sha.slice(0, 7)}`, p.actor, ...(p.detail || [])].filter(Boolean).join(' / ')}`);
+  }
   for (const x of r.results.filter((y) => y.status === 'unconfigured' || y.status === 'unconnected')) console.log(`::warning title=미믹노트::${x.member}: ${LABEL[x.status]} — 보류해 두었다가 연결되면 보냅니다`);
 
   if (env.GITHUB_STEP_SUMMARY) {
@@ -270,7 +303,7 @@ async function main() {
     fs.writeFileSync(ledgerFile, `${JSON.stringify(r.ledger, null, 2)}\n`);
   }
   if (env.GITHUB_OUTPUT) fs.appendFileSync(env.GITHUB_OUTPUT, `ledger_changed=${changedLedger}\n`);
-  const failed = r.problems.length > 0 || r.results.some((x) => x.status === 'failed');
+  const failed = r.problems.some((p) => !p.known) || r.results.some((x) => x.status === 'failed');
   process.exitCode = failed ? 1 : 0;
 }
 

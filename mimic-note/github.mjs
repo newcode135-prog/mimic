@@ -39,7 +39,8 @@ export function createGithub(repo = REPO) {
         const r = JSON.parse(gh(['api', '-X', 'PUT', `repos/${repo}/contents/${file}`, '--input', '-'], body));
         return { commit: r.commit.sha, url: r.commit.html_url };
       } catch (e) {
-        if (/HTTP 409|does not match/i.test(e.stderr || e.message)) return { conflict: true };
+        // sha 불일치(그사이 누가 바꿈)만 충돌. 규칙·보호 위반 같은 다른 409 는 그대로 오류로 보여 준다.
+        if (/does not match|but expected/i.test(e.stderr || e.message)) return { conflict: true };
         throw e;
       }
     },
@@ -59,34 +60,62 @@ export function createGithub(repo = REPO) {
   };
 }
 
-// Actions 로그의 `MIMIC_RESULT {...}` 줄 = 팀원별 실제 발송 결과(notify.mjs 가 남김)
-export function parseResults(log) {
-  return String(log || '').split('\n').map((l) => l.match(/MIMIC_RESULT (\{.*\})\s*$/)).filter(Boolean).map((m) => JSON.parse(m[1]));
+// Actions 로그의 `MIMIC_RESULT {...}`(팀원별 실제 발송 결과), `MIMIC_PROBLEM {...}`(권한·데이터 문제),
+// `MIMIC_COVERS [...]`(이 실행이 확인한 push 커밋들) 줄을 읽는다(notify.mjs 가 남김).
+export function parseLog(log) {
+  const out = { results: [], problems: [], covers: [] };
+  for (const l of String(log || '').split('\n')) {
+    const m = l.match(/MIMIC_(RESULT|PROBLEM|COVERS) (.*?)\s*$/);
+    if (!m) continue;
+    try {
+      const v = JSON.parse(m[2]);
+      if (m[1] === 'RESULT') out.results.push(v);
+      else if (m[1] === 'PROBLEM') out.problems.push(v);
+      else out.covers.push(...v);
+    } catch { /* 형식이 다른 줄은 무시 */ }
+  }
+  return out;
 }
+export const parseResults = (log) => parseLog(log).results;
 
 const sleeper = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 알림 실행을 찾아 끝날 때까지 기다린 뒤 결과를 돌려준다.
-//   commit: 그 커밋의 push 로 시작된 실행 / afterRunId+actor: 방금 내가 요청한 수동 실행
-// 실행이 다음 실행에 합쳐져 취소(cancelled)되면 그다음 실행의 결과를 본다.
+//   commit: 그 커밋이 들어간 push 의 실행. 실행이 다음 실행에 합쳐져 취소됐거나 앞선 실행이 먼저 처리했으면
+//           MIMIC_COVERS 로 "그 커밋을 실제로 처리한 실행"을 찾아 그 결과를 보여 준다.
+//   afterRunId+actor: 방금 내가 요청한 수동 실행. 취소되면 status 'cancelled'(부른 쪽이 한 번 다시 요청).
 export async function waitForNotify(github, { commit, afterRunId = 0, actor, timeoutMs = 240000, sleep = sleeper, now = Date.now } = {}) {
   const deadline = now() + timeoutMs;
+  const settle = async (run) => {
+    while (run.status !== 'completed' && now() < deadline) { await sleep(4000); run = github.run(run.id); }
+    return run;
+  };
+  const read = (run) => {
+    try { return { ...parseLog(github.log(run.id)), logError: null }; } catch (e) { return { results: [], problems: [], covers: [], logError: e.message }; }
+  };
   const find = () => (commit ? github.runs(`event=push&head_sha=${commit}`) : github.runs(`event=workflow_dispatch&actor=${encodeURIComponent(actor)}`).filter((r) => r.id > afterRunId))
     .sort((a, b) => a.id - b.id)[0];
   let run = find();
   while (!run && now() < deadline) { await sleep(4000); run = find(); }
   if (!run) return { status: 'not-found' };
-  for (let hop = 0; hop < 3; hop++) {
-    while (run.status !== 'completed' && now() < deadline) { await sleep(4000); run = github.run(run.id); }
-    if (run.status !== 'completed') return { status: 'timeout', run };
-    if (run.conclusion !== 'cancelled') break;
-    const next = github.runs('').filter((r) => r.id > run.id).sort((a, b) => a.id - b.id)[0];
-    if (!next) return { status: 'cancelled', run };
-    run = next;
+  run = await settle(run);
+  if (run.status !== 'completed') return { status: 'timeout', run };
+  if (!commit) return run.conclusion === 'cancelled' ? { status: 'cancelled', run } : { status: 'done', run, ...read(run) };
+
+  const own = run.conclusion === 'cancelled' ? null : { run, ...read(run) };
+  if (own && (own.logError || own.covers.includes(commit))) return { status: 'done', ...own };
+  // 이 커밋을 처리한 다른 실행: 뒤 실행(기다림) → 앞 실행 순서로 최대 5개
+  const all = github.runs('');
+  const newer = all.filter((r) => r.id > run.id).sort((a, b) => a.id - b.id);
+  const older = all.filter((r) => r.id < run.id).sort((a, b) => b.id - a.id);
+  const others = [...newer, ...older].slice(0, 5);
+  for (let o of others) {
+    o = await settle(o);
+    if (o.status !== 'completed' || o.conclusion === 'cancelled') continue;
+    const r = read(o);
+    if (r.covers.includes(commit)) return { status: 'done', run: o, ...r, coveredElsewhere: true };
   }
-  let results = [];
-  try { results = parseResults(github.log(run.id)); } catch { /* 로그를 못 받아도 실행 상태는 보여 준다 */ }
-  return { status: 'done', run, results };
+  return own ? { status: 'done', ...own } : { status: 'cancelled', run };
 }
 
 const LABEL = {
@@ -97,15 +126,18 @@ const LABEL = {
   failed: '❌ 발송 실패',
   alert: '⚠️ 대표관리자에게 경고 발송',
 };
+const KIND = { unauthorized: '권한 없는 변경 — 발송 보류', schema: '깨진 데이터 — 발송 보류', 'history-rewrite': 'main 기록 다시 쓰기 — 발송 중지', 'unknown-member': '없는 팀원' };
 
 export function formatNotify(r, members = []) {
   const name = (id) => members.find((m) => m.id === id)?.name || id;
   if (r.status === 'not-found') return '📨 텔레그램: 알림 실행을 아직 찾지 못했습니다(GitHub Actions 지연). 나중에 확인: gh run list -R newcode135-prog/mimic -w mimic-checkin.yml';
   if (r.status === 'timeout') return `📨 텔레그램: 알림 실행이 아직 끝나지 않았습니다 — ${r.run.html_url}`;
-  if (r.status === 'cancelled') return `📨 텔레그램: 알림 실행이 취소됐습니다 — ${r.run.html_url}`;
-  const lines = [`📨 텔레그램 알림 (GitHub Actions: ${r.run.conclusion === 'success' ? '성공' : r.run.conclusion})`];
-  if (!r.results.length) lines.push('  • 보낼 대상 없음(바뀐 팀원·보류된 알림 없음)');
+  if (r.status === 'cancelled') return `📨 텔레그램: 알림 실행이 취소됐습니다(다른 실행과 겹침) — ${r.run.html_url}`;
+  const lines = [`📨 텔레그램 알림 (GitHub Actions: ${r.run.conclusion === 'success' ? '성공' : r.run.conclusion})${r.coveredElsewhere ? ' — 이 변경을 처리한 실행' : ''}`];
+  if (r.logError) lines.push(`  • 결과 로그를 읽지 못했습니다(${r.logError}) — 아래 실행 기록에서 확인하세요`);
+  else if (!r.results.length && !r.problems.length) lines.push('  • 보낼 대상 없음(바뀐 팀원·보류된 알림 없음)');
   for (const x of r.results) lines.push(`  • ${name(x.member)}: ${LABEL[x.status] || x.status}${x.error ? ` — ${x.error}` : ''}`);
+  for (const p of r.problems) lines.push(`  • ${KIND[p.kind] || p.kind}${p.known ? '(아직 해결 안 됨)' : ''}: ${(p.detail || []).join(' / ')}`);
   lines.push(`  실행 기록: ${r.run.html_url}`);
   return lines.join('\n');
 }

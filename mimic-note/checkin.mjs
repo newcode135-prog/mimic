@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { NOTE_DIR, loadMembers, findMember, loadDb, openMissions, doneMissions, formatMissions, othersLowMissions, loadPremise, chatIdFor } from './lib.mjs';
 import { loadGames, latestGame, formatGame } from './game.mjs';
 import { HOME_DIR } from './passive/compress.mjs';
-import { createGithub, waitForNotify, formatNotify } from './github.mjs';
+import { createGithub, waitForNotify, formatNotify, DB_FILE } from './github.mjs';
 
 export { loadMembers, findMember } from './lib.mjs';
 
@@ -69,10 +69,15 @@ export async function telegramViaActions(member, { github = createGithub(), wait
   try {
     login = github.whoami();
     if (!github.access().push) return `📨 텔레그램: 건너뜀 — GitHub 계정 ${login} 에 저장소 쓰기 권한이 없어 발송을 요청할 수 없습니다(초대 수락 필요).`;
-    const after = github.latestRunId();
-    github.dispatch(member.id, false);
-    if (!wait) return '📨 텔레그램: GitHub Actions 에 발송을 요청했습니다(결과 미확인 — --no-wait).';
-    return formatNotify(await waitForNotify(github, { afterRunId: after, actor: login, sleep }), loadMembers());
+    let r;
+    for (let i = 0; i < 2; i++) { // 다른 실행과 겹쳐 취소되면 한 번 더 요청
+      const after = github.latestRunId();
+      github.dispatch(member.id, false);
+      if (!wait) return '📨 텔레그램: GitHub Actions 에 발송을 요청했습니다(결과 미확인 — --no-wait).';
+      r = await waitForNotify(github, { afterRunId: after, actor: login, sleep });
+      if (r.status !== 'cancelled') break;
+    }
+    return formatNotify(r, loadMembers());
   } catch (e) {
     return `📨 텔레그램: 요청하지 못했습니다 — ${e.message}`;
   }
@@ -81,6 +86,10 @@ export async function telegramViaActions(member, { github = createGithub(), wait
 async function main(argv) {
   const args = argv.filter((a) => !a.startsWith('--'));
   const flags = new Set(argv.filter((a) => a.startsWith('--')));
+  if (flags.has('--chat-ids')) {
+    console.log('chat id 를 직접 확인·전달하는 방식은 바뀌었습니다. 저장소 주인 계정으로 본인 터미널에서:\n  node mimic-note/telegram.mjs connect\n→ 팀원마다 일회용 연결 링크가 나오고, 링크로 [시작]하면 본인 확인 후 chat id 가 .env 와 GitHub 비밀값에 자동 등록됩니다(대화·저장소에 붙여 넣지 않음).');
+    return 0;
+  }
   const members = loadMembers();
   const member = findMember(args[0], members);
   if (!member) {
@@ -93,12 +102,22 @@ async function main(argv) {
     fs.writeFileSync(path.join(HOME_DIR(), 'session.json'), JSON.stringify({ player: member.id, at: new Date().toISOString() }));
   } catch { /* 접속 기록을 못 남겨도 체크인은 계속 */ }
 
-  const db = loadDb();
+  // 미션은 GitHub main 의 최신본으로(텔레그램도 main 기준), 못 읽으면 이 폴더의 파일
+  const github = createGithub();
+  let db;
+  let note = '';
+  try {
+    db = JSON.parse(github.readFile(DB_FILE).text);
+  } catch {
+    db = loadDb();
+    note = '(GitHub main 을 읽지 못해 이 폴더의 미션을 보여 줍니다 — 최신이 아닐 수 있으니 git pull)';
+  }
   console.log(checkinText(member, db));
+  if (note) console.log(`\n${note}`);
 
   if (flags.has('--no-telegram')) return 0;
   console.log('');
-  console.log(await telegramViaActions(member, { wait: !flags.has('--no-wait') }));
+  console.log(await telegramViaActions(member, { github, wait: !flags.has('--no-wait') }));
   return 0;
 }
 

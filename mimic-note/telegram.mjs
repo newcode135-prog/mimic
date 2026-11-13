@@ -39,7 +39,8 @@ export function processUpdates(updates, { codes, chatOwners, now = Date.now() })
     if (!m || !msg.chat) continue;
     const chatId = String(msg.chat.id);
     if (msg.chat.type !== 'private') { replies.push({ chatId, text: '미믹노트 연결은 봇과의 개인 대화에서만 할 수 있어요.' }); continue; }
-    const c = m[1] ? codes[m[1]] : null;
+    // 코드 형식(16자)과 "자기 키"만 인정 — /start __proto__ 같은 입력으로 객체 기본값을 건드리지 못하게
+    const c = /^[A-Za-z0-9_-]{16}$/.test(m[1] || '') && Object.hasOwn(codes, m[1]) ? codes[m[1]] : null;
     if (!c) { replies.push({ chatId, text: '관리자에게 받은 본인 연결 링크로 다시 눌러 주세요. (/start 만으로는 연결되지 않아요)' }); continue; }
     if (c.usedAt) { replies.push({ chatId, text: '이미 사용된 연결 링크예요. 관리자에게 새 링크를 요청하세요.' }); continue; }
     if (Date.parse(c.expiresAt) <= now) { replies.push({ chatId, text: '만료된 연결 링크예요. 관리자에게 새 링크를 요청하세요.' }); continue; }
@@ -64,7 +65,7 @@ export function setEnvVar(file, key, value) {
 
 const codesFile = () => path.join(HOME_DIR(), 'telegram-codes.json');
 function loadCodes() {
-  try { return JSON.parse(fs.readFileSync(codesFile(), 'utf8')).codes || {}; } catch { return {}; }
+  try { return Object.assign(Object.create(null), JSON.parse(fs.readFileSync(codesFile(), 'utf8')).codes); } catch { return Object.create(null); }
 }
 function saveCodes(codes) {
   fs.mkdirSync(path.dirname(codesFile()), { recursive: true });
@@ -213,9 +214,14 @@ async function resend(name) {
   const github = createGithub();
   const login = github.whoami();
   if (!github.access().push) throw new Error(`GitHub 계정 ${login} 에 저장소 쓰기 권한이 없어 발송을 요청할 수 없습니다.`);
-  const after = github.latestRunId();
-  github.dispatch(member.id, true);
-  console.log(formatNotify(await waitForNotify(github, { afterRunId: after, actor: login }), loadMembers()));
+  let r;
+  for (let i = 0; i < 2; i++) { // 다른 실행과 겹쳐 취소되면 한 번 더
+    const after = github.latestRunId();
+    github.dispatch(member.id, true);
+    r = await waitForNotify(github, { afterRunId: after, actor: login });
+    if (r.status !== 'cancelled') break;
+  }
+  console.log(formatNotify(r, loadMembers()));
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
