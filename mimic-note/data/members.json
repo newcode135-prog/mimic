@@ -4,7 +4,7 @@
     { "id": "changmin", "name": "창민", "role": "owner", "github": "darrenpual" },
     { "id": "minho", "name": "민호", "role": "admin", "github": "newcode135-prog" },
     { "id": "yuri", "name": "유리", "role": "admin", "github": "emileepark5281-cmd" },
-    { "id": "nathan", "name": "네이뜬", "role": "member", "github": null },
+    { "id": "nathan", "name": "네이뜬", "role": "member", "github": "nathanywang2003-bit" },
     { "id": "lucas", "name": "루카스", "role": "member", "github": "ravityl" }
   ]
 }

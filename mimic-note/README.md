@@ -216,7 +216,7 @@ main 에 missions.json·members.json 변경 반영 (push)          10분마다 �
 | 창민 | changmin | **대표관리자(최종 권한)** | 미정 |
 | 민호 | minho | 관리자(2순위) | 미정 |
 | 유리 | yuri | 관리자(3순위) | emileepark5281-cmd |
-| 네이뜬 | nathan | 팀원 | 미정 |
+| 네이뜬 | nathan | 팀원 | nathanywang2003-bit |
 | 루카스 | lucas | 팀원 | ravityl |
 
 - 미션은 **창민**이 만들고, 관리자들이 함께 관리합니다. 최종 결정은 창민.
